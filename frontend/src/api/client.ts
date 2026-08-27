@@ -32,9 +32,28 @@ export function mediaUrl(path: string): string {
   return `${API_BASE_URL}${path}`;
 }
 
+/**
+ * The double-submit CSRF cookie (`rso_csrf`) is set by the API's origin.
+ * For a same-origin deployment (Docker/nginx) that's also readable via
+ * document.cookie on the frontend page, but for a standalone cross-origin
+ * deployment (frontend on Vercel, API elsewhere) it is NOT: cookies are
+ * scoped to the domain that set them, so JS on the frontend's origin has
+ * no access to a cookie belonging to the API's origin. The API mirrors the
+ * same token back in a readable `X-CSRF-Token` response header (exposed
+ * via CORS - see app/core/csrf.py) on login/register/verify-otp/change-
+ * password and on GET /auth/me, so this in-memory copy works regardless
+ * of deployment topology; the cookie read remains as a fallback.
+ */
+let csrfToken: string | null = null;
+
 function getCsrfCookie(): string | null {
   const match = document.cookie.match(/(?:^|;\s*)rso_csrf=([^;]+)/);
   return match ? decodeURIComponent(match[1]) : null;
+}
+
+function captureCsrfToken(res: Response): void {
+  const token = res.headers.get("x-csrf-token");
+  if (token) csrfToken = token;
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -42,8 +61,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json", ...(options.headers as Record<string, string> || {}) };
 
   if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
-    const csrfToken = getCsrfCookie();
-    if (csrfToken) headers["X-CSRF-Token"] = csrfToken;
+    const token = csrfToken || getCsrfCookie();
+    if (token) headers["X-CSRF-Token"] = token;
   }
 
   const res = await fetch(`${API_BASE_URL}/api/v1${path}`, {
@@ -51,6 +70,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     headers,
     ...options,
   });
+  captureCsrfToken(res);
   if (!res.ok) {
     let detail = `Request failed (${res.status})`;
     try {
@@ -80,13 +100,14 @@ export const api = {
  * CSRF header like any other mutating request.
  */
 export async function uploadFile<T>(path: string, formData: FormData): Promise<T> {
-  const csrfToken = getCsrfCookie();
+  const token = csrfToken || getCsrfCookie();
   const res = await fetch(`${API_BASE_URL}/api/v1${path}`, {
     method: "POST",
     credentials: "include",
-    headers: csrfToken ? { "X-CSRF-Token": csrfToken } : undefined,
+    headers: token ? { "X-CSRF-Token": token } : undefined,
     body: formData,
   });
+  captureCsrfToken(res);
   if (!res.ok) {
     let detail = `Upload failed (${res.status})`;
     try {

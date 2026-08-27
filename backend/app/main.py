@@ -118,15 +118,6 @@ if settings.METRICS_ENABLED:
 
     Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
 # Requests larger than this are rejected before any parsing happens, so a
 # malicious or buggy client can't force the server to buffer an enormous
 # body (a cheap memory-exhaustion DoS lever). Generous enough for a file
@@ -174,6 +165,30 @@ async def security_headers_and_logging(request: Request, call_next):
     if settings.ENVIRONMENT == "production":
         response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
     return response
+
+
+# Registered *after* security_headers_and_logging so it becomes the
+# outermost middleware layer (Starlette wraps in reverse registration
+# order - the most recently added middleware runs first on the way in and
+# last on the way out). That matters here: security_headers_and_logging
+# returns some responses (CSRF rejection, oversized body) directly without
+# calling call_next(), which would otherwise skip CORSMiddleware entirely -
+# leaving those error responses without CORS headers and making a
+# legitimate cross-origin rejection look like a generic CORS failure to
+# the browser instead of a readable error.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    # The CSRF token is echoed in this response header (see
+    # app/core/csrf.py::expose_csrf_token) so a cross-origin frontend can
+    # capture it - it cannot read the rso_csrf cookie itself, since cookies
+    # are scoped to the domain that set them. Browsers hide all response
+    # headers from cross-origin JS by default unless explicitly exposed.
+    expose_headers=["X-CSRF-Token"],
+)
 
 
 @app.exception_handler(RequestValidationError)

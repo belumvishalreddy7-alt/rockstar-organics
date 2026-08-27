@@ -14,7 +14,7 @@ integration might introduce with a looser cookie policy. The pattern:
 - A cross-site attacker can trigger a cookie-bearing request but cannot
   read the cookie value to put it in the header, so the check fails.
 """
-from fastapi import HTTPException, Request
+from fastapi import HTTPException, Request, Response
 
 from app.core.config import get_settings
 from app.core.security import generate_token
@@ -27,11 +27,13 @@ CSRF_HEADER_NAME = "x-csrf-token"
 # Paths exempt from the header check: they either establish the session
 # (nothing to protect yet) or are safe/idempotent by HTTP method already.
 EXEMPT_PATH_PREFIXES = (
-    "/api/auth/login",
-    "/api/auth/register",
-    "/api/auth/logout",
-    "/api/auth/forgot-password",
-    "/api/auth/reset-password",
+    "/api/v1/auth/login",
+    "/api/v1/auth/register",
+    "/api/v1/auth/signup",
+    "/api/v1/auth/verify-otp",
+    "/api/v1/auth/logout",
+    "/api/v1/auth/forgot-password",
+    "/api/v1/auth/reset-password",
     "/api/docs",
     "/api/openapi.json",
 )
@@ -39,6 +41,29 @@ EXEMPT_PATH_PREFIXES = (
 
 def new_csrf_token() -> str:
     return generate_token(16)
+
+
+def expose_csrf_token(response: Response, token: str) -> None:
+    """Makes the CSRF token readable by frontend JS via the response body/
+    header in addition to the cookie. A same-origin deployment (Docker/
+    nginx) can read the `rso_csrf` cookie directly via document.cookie, but
+    a standalone cross-origin deployment (frontend on Vercel, API on a
+    different host) cannot: cookies are scoped to the domain that set them,
+    so JS running on the frontend's origin has no access to a cookie set by
+    the API's origin. Echoing the same token in a response header - which
+    CORSMiddleware is configured to expose - lets the frontend capture it
+    regardless of deployment topology."""
+    response.headers[CSRF_HEADER_NAME] = token
+
+
+def mirror_csrf_cookie_header(request: Request, response: Response) -> None:
+    """For requests that don't reissue a new CSRF token (e.g. GET /auth/me
+    on page load), echo back whatever token the browser already sent via
+    the cookie so a cross-origin frontend - which cannot read that cookie
+    itself - can (re)capture it after a refresh or direct navigation."""
+    token = request.cookies.get(CSRF_COOKIE_NAME)
+    if token:
+        response.headers[CSRF_HEADER_NAME] = token
 
 
 def csrf_cookie_kwargs() -> dict:

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.audit import record_audit
 from app.core.config import get_settings
-from app.core.csrf import csrf_cookie_kwargs, new_csrf_token
+from app.core.csrf import csrf_cookie_kwargs, expose_csrf_token, mirror_csrf_cookie_header, new_csrf_token
 from app.core.database import get_db
 from app.core.deps import create_session_value, get_current_user, require_user
 from app.core.email import otp_email, password_reset_email, send_email, welcome_email
@@ -52,7 +52,9 @@ def _issue_session(response: Response, user: User) -> None:
         samesite=settings.COOKIE_SAMESITE,
         path="/",
     )
-    response.set_cookie(value=new_csrf_token(), **csrf_cookie_kwargs())
+    token = new_csrf_token()
+    response.set_cookie(value=token, **csrf_cookie_kwargs())
+    expose_csrf_token(response, token)
 
 
 @router.post("/register", response_model=UserOut)
@@ -226,7 +228,9 @@ def logout(response: Response):
 
 
 @router.get("/me", response_model=UserOut | None)
-def me(user: User | None = Depends(get_current_user)):
+def me(request: Request, response: Response, user: User | None = Depends(get_current_user)):
+    if user is not None:
+        mirror_csrf_cookie_header(request, response)
     return user
 
 
