@@ -65,7 +65,7 @@ def _publish_product(client, super_admin):
     r = client.post("/api/v1/products", json={"sku": sku, "name": "Media Product", "slug": slug,
                                             "precautions": "x", "full_description": "x"})
     pid = r.json()["id"]
-    cat = client.post("/api/v1/categories", params={"name": f"Media Cat {suffix}", "slug": f"media-cat-{suffix}"})
+    cat = client.post("/api/v1/categories", json={"name": f"Media Cat {suffix}", "slug": f"media-cat-{suffix}"})
     client.put(f"/api/v1/products/{pid}", json={"sku": sku, "name": "Media Product", "slug": slug,
                                               "category_id": cat.json()["id"], "precautions": "x", "full_description": "x"})
     client.post(f"/api/v1/products/{pid}/transition/in_review", json={})

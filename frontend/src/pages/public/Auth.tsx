@@ -96,12 +96,27 @@ export function ForgotPassword() {
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [devToken, setDevToken] = useState<string | null>(null);
+  const [emailUncertain, setEmailUncertain] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
 
   return (
     <div className="container page-section" style={{ maxWidth: 420 }}>
       <h1>Reset your password</h1>
       <div className="panel">
+        {error && <div className="alert alert-error">{error}</div>}
         {message && <div className="alert alert-info">{message}</div>}
+        {/* email_sent is false both when there's no account for that address
+            and when there IS an account but delivery failed/isn't configured -
+            those two cases are deliberately indistinguishable from the
+            outside (see backend/app/routers/auth.py forgot_password), so
+            this note never confirms or denies the account exists; it just
+            tells a real user honestly that they may not receive anything. */}
+        {emailUncertain && !devToken && (
+          <div className="alert alert-info">
+            If an account exists for that address, we could not confirm email delivery just now. If nothing arrives in a few minutes, please contact support.
+          </div>
+        )}
         {devToken && (
           <div className="alert alert-info">
             Development mode: <Link to={`/reset-password?token=${devToken}`}>use this reset link</Link> (would be emailed in production).
@@ -110,14 +125,23 @@ export function ForgotPassword() {
         <form
           onSubmit={async (e) => {
             e.preventDefault();
-            const r = await api.post<{ ok: boolean; message: string; dev_reset_token?: string }>("/auth/forgot-password", { email });
-            setMessage(r.message);
-            setDevToken(r.dev_reset_token || null);
+            setPending(true);
+            setError(null);
+            try {
+              const r = await api.post<{ ok: boolean; message: string; email_sent: boolean; dev_reset_token?: string }>("/auth/forgot-password", { email });
+              setMessage(r.message);
+              setDevToken(r.dev_reset_token || null);
+              setEmailUncertain(!r.email_sent);
+            } catch (err) {
+              setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
+            } finally {
+              setPending(false);
+            }
           }}
         >
           <div className="field"><label htmlFor="email">Email</label>
             <input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></div>
-          <button className="btn btn-primary" type="submit">Send reset link</button>
+          <button className="btn btn-primary" type="submit" disabled={pending}>{pending ? "Sending..." : "Send reset link"}</button>
         </form>
       </div>
     </div>

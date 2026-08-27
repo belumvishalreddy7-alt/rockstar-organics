@@ -32,7 +32,7 @@ def test_product_lifecycle_and_visibility(client, super_admin):
     assert r.status_code == 200
 
     # create category first, then update product to attach it (publication requires category)
-    cat = client.post("/api/v1/categories", params={"name": "Bio Pesticides", "slug": "bio-pesticides"})
+    cat = client.post("/api/v1/categories", json={"name": "Bio Pesticides", "slug": "bio-pesticides"})
     assert cat.status_code == 200
     client.put(f"/api/v1/products/{pid}", json={
         "sku": "SKU-001", "name": "Neem Based Spray", "slug": "neem-based-spray",

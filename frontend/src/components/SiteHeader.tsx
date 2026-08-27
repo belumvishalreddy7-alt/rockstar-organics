@@ -45,7 +45,14 @@ export function SiteHeader() {
               <button
                 className="nav-link"
                 onClick={async () => {
-                  await logout();
+                  try {
+                    await logout();
+                  } catch {
+                    // Best-effort: even if the server call fails (network
+                    // blip, already-expired session), still take the user
+                    // back to a signed-out-looking state rather than
+                    // leaving them stuck with an unresponsive button.
+                  }
                   setOpen(false);
                   navigate("/");
                 }}

@@ -46,8 +46,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    await api.post("/auth/logout");
-    setUser(null);
+    try {
+      await api.post("/auth/logout");
+    } finally {
+      // Clear client-side state even if the request failed (network blip,
+      // already-expired session) - staying "logged in" in the UI after the
+      // user explicitly asked to sign out would be a silent-failure bug,
+      // and the httponly session cookie expires on its own regardless.
+      setUser(null);
+    }
   };
 
   return <AuthContext.Provider value={{ user, loading, refresh, login, logout }}>{children}</AuthContext.Provider>;

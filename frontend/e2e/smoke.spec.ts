@@ -55,6 +55,19 @@ test.describe("authentication", () => {
     await expect(page.getByText(/invalid|incorrect|could not/i)).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText(/traceback|internal server error/i)).toHaveCount(0);
   });
+
+  test("forgot-password never silently appears to succeed with no feedback", async ({ page }) => {
+    // This test environment has no real email provider configured, so
+    // email_sent comes back false even for a real account - the point is
+    // that the UI says so honestly (in addition to the generic message)
+    // instead of just showing "a reset link has been generated" and
+    // leaving the user to wait forever for an email that will never come.
+    await page.goto("/forgot-password");
+    await page.getByLabel(/email/i).fill(uniqueEmail);
+    await page.getByRole("button", { name: /send reset link/i }).click();
+    await expect(page.getByText(/reset link has been generated/i)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/could not confirm email delivery/i)).toBeVisible();
+  });
 });
 
 test.describe("resilience", () => {

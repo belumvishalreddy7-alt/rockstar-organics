@@ -105,7 +105,7 @@ def test_review_comment_length_is_capped(client, super_admin):
     r = client.post("/api/v1/products", json={"sku": "SKU-CAP", "name": "Cap Product", "slug": "cap-product",
                                             "precautions": "x", "full_description": "x"})
     pid = r.json()["id"]
-    cat = client.post("/api/v1/categories", params={"name": "Cap Cat", "slug": "cap-cat"})
+    cat = client.post("/api/v1/categories", json={"name": "Cap Cat", "slug": "cap-cat"})
     client.put(f"/api/v1/products/{pid}", json={"sku": "SKU-CAP", "name": "Cap Product", "slug": "cap-product",
                                               "category_id": cat.json()["id"], "precautions": "x", "full_description": "x"})
     client.post(f"/api/v1/products/{pid}/transition/in_review", json={})
@@ -142,6 +142,27 @@ def test_enquiry_with_blank_optional_email_is_accepted(client):
     })
     assert r.status_code == 200, r.text
     assert r.json()["reference_number"]
+
+
+def test_change_password_is_rate_limited(client):
+    """Guards a hijacked session from grinding through current_password
+    guesses (each of which costs a real Argon2 verification server-side)."""
+    client.post("/api/v1/auth/register", json={
+        "full_name": "Rate Change Pw", "email": "ratechangepw@example.com", "phone": "9876543246", "password": "Passw0rd123",
+    })
+    for _ in range(5):
+        r = client.post("/api/v1/auth/change-password", json={"current_password": "WrongPassword1", "new_password": "NewPassw0rd456"})
+        assert r.status_code == 400
+    r = client.post("/api/v1/auth/change-password", json={"current_password": "WrongPassword1", "new_password": "NewPassw0rd456"})
+    assert r.status_code == 429
+
+
+def test_reset_password_is_rate_limited(client):
+    for _ in range(10):
+        r = client.post("/api/v1/auth/reset-password", json={"token": "not-a-real-token", "new_password": "Passw0rd123"})
+        assert r.status_code == 400
+    r = client.post("/api/v1/auth/reset-password", json={"token": "not-a-real-token", "new_password": "Passw0rd123"})
+    assert r.status_code == 429
 
 
 def test_password_max_length_enforced(client):

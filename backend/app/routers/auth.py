@@ -241,6 +241,15 @@ def change_password(payload: ChangePasswordRequest, response: Response, user: Us
     e.g. a freshly approved dealer or invited staff member) change their
     own password by proving they know the current one. This is distinct
     from the forgot-password flow, which is for someone who is locked out."""
+    # Rate limited per user (not per IP): this endpoint requires an
+    # authenticated session, so the realistic threat isn't an anonymous
+    # brute force, it's a hijacked/stolen session being used to grind
+    # through current_password guesses - and each guess costs a real
+    # Argon2 verification, so unlimited attempts is also a cheap CPU-DoS
+    # lever against the server itself.
+    limiter_key = f"change-password:{user.id}"
+    if not rate_limiter.check(limiter_key, settings.LOGIN_RATE_LIMIT_ATTEMPTS, settings.LOGIN_RATE_LIMIT_WINDOW_SECONDS):
+        raise HTTPException(status_code=429, detail="Too many attempts. Please try again later.")
     if not verify_password(payload.current_password, user.password_hash):
         raise HTTPException(status_code=400, detail="Current password is incorrect.")
     errors = password_strength_errors(payload.new_password)
@@ -267,7 +276,12 @@ def forgot_password(payload: ForgotPasswordRequest, request: Request, db: Sessio
         raise HTTPException(status_code=429, detail="Too many requests. Please try again later.")
 
     user = db.query(User).filter(User.email == payload.email.lower()).first()
-    generic_response = {"ok": True, "message": "If that email exists, a reset link has been generated."}
+    # `email_sent` is included in every response path, not just this one -
+    # if only the "user exists" branch added the key, its mere presence in
+    # the JSON (independent of its value) would let an attacker enumerate
+    # registered emails by checking for the key rather than reading the
+    # (deliberately identical) message text.
+    generic_response = {"ok": True, "message": "If that email exists, a reset link has been generated.", "email_sent": False}
     if not user:
         return generic_response
 
@@ -295,7 +309,14 @@ def forgot_password(payload: ForgotPasswordRequest, request: Request, db: Sessio
 
 
 @router.post("/reset-password")
-def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db)):
+def reset_password(payload: ResetPasswordRequest, request: Request, db: Session = Depends(get_db)):
+    # The token itself is 256 bits of entropy (secrets.token_urlsafe(32)),
+    # so this limiter is defense-in-depth against generic endpoint abuse
+    # rather than a meaningful brute-force barrier on its own.
+    limiter_key = f"reset-password:{request.client.host if request.client else 'unknown'}"
+    if not rate_limiter.check(limiter_key, settings.PUBLIC_FORM_RATE_LIMIT_ATTEMPTS, settings.PUBLIC_FORM_RATE_LIMIT_WINDOW_SECONDS):
+        raise HTTPException(status_code=429, detail="Too many attempts. Please try again later.")
+
     errors = password_strength_errors(payload.new_password)
     if errors:
         raise HTTPException(status_code=400, detail=" ".join(errors))

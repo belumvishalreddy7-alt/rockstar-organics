@@ -518,3 +518,20 @@ class StaffInviteRequest(BaseModel):
     email: EmailStr
     full_name: str = Field(min_length=1, max_length=150)
     role: str = Field(min_length=1, max_length=30)
+
+
+# ---------------------------------------------------------------------------
+# Product categories
+# ---------------------------------------------------------------------------
+
+
+class CategoryCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=150)
+    slug: str = Field(min_length=1, max_length=150)
+
+    @field_validator("slug")
+    @classmethod
+    def valid_slug(cls, v):
+        if not SLUG_RE.match(v):
+            raise ValueError("Slug must be lowercase letters, numbers, and hyphens only.")
+        return v
