@@ -54,7 +54,10 @@ export function SiteHeader() {
               </button>
             </>
           ) : (
-            <NavLink to="/login" onClick={() => setOpen(false)}>Login</NavLink>
+            <>
+              <NavLink to="/signup" onClick={() => setOpen(false)}>Sign Up</NavLink>
+              <NavLink to="/login" onClick={() => setOpen(false)}>Login</NavLink>
+            </>
           )}
         </nav>
       </div>

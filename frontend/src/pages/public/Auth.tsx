@@ -41,7 +41,7 @@ export function Login() {
           <button className="btn btn-primary" type="submit" disabled={pending}>{pending ? "Signing in..." : "Sign in"}</button>
         </form>
         <p className="small" style={{ marginTop: 12 }}>
-          <Link to="/forgot-password">Forgot your password?</Link> · <Link to="/register">Create a farmer account</Link>
+          <Link to="/forgot-password">Forgot your password?</Link> · <Link to="/signup">Create an account</Link>
         </p>
       </div>
     </div>
