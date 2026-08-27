@@ -8,12 +8,12 @@ const STAFF_ROLES = ["super_admin", "admin", "content_manager", "sales_manager",
 export function ChangePassword() {
   const { user, loading, refresh } = useAuth();
   const navigate = useNavigate();
-
-  if (!loading && !user) return <Navigate to="/login" replace />;
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+
+  if (!loading && !user) return <Navigate to="/login" replace />;
 
   const dashboardPath = user
     ? user.role === "farmer" ? "/farmer" : user.role === "dealer" ? "/dealer" : STAFF_ROLES.includes(user.role) ? "/staff" : "/"
