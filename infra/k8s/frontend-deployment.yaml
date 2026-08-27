@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rso-frontend
+  namespace: rockstar-organics
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: rso-frontend
+  template:
+    metadata:
+      labels:
+        app: rso-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: ghcr.io/example-org/rockstar-organics-frontend:latest  # built by .github/workflows/ci.yml
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "128Mi"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 3
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rso-frontend
+  namespace: rockstar-organics
+spec:
+  selector:
+    app: rso-frontend
+  ports:
+    - port: 80
+      targetPort: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rso-ingress
+  namespace: rockstar-organics
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: "12m"
+spec:
+  tls:
+    - hosts: ["app.rockstarorganics.example"]
+      secretName: rso-tls
+  rules:
+    - host: app.rockstarorganics.example
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: rso-backend
+                port:
+                  number: 8000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: rso-frontend
+                port:
+                  number: 80

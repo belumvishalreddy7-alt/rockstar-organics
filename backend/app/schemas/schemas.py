@@ -1,0 +1,469 @@
+"""Pydantic request/response schemas. Backend validation here is
+authoritative; frontend validation is a convenience only.
+
+Every free-text field carries an explicit max_length: an unbounded Text
+column plus an unbounded request field is a storage-exhaustion vector (one
+client can otherwise post megabyte-scale strings all day), so the caps
+here are the actual enforcement point, not just UX guidance.
+"""
+from __future__ import annotations
+
+import datetime as dt
+import re
+
+from pydantic import BaseModel, EmailStr, Field, field_validator
+
+PHONE_RE = re.compile(r"^[6-9]\d{9}$")
+PIN_RE = re.compile(r"^\d{6}$")
+SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+
+SEVERITY_VALUES = {"low", "medium", "high", "urgent"}
+ENQUIRY_TYPE_VALUES = {"general", "product", "dealer", "bulk_purchase", "business_partnership",
+                       "farmer_support_followup", "website_issue", "privacy_request"}
+
+
+class RegisterFarmerRequest(BaseModel):
+    full_name: str = Field(min_length=1, max_length=150)
+    email: EmailStr
+    phone: str
+    password: str = Field(min_length=1, max_length=256)
+
+    @field_validator("phone")
+    @classmethod
+    def valid_phone(cls, v):
+        if not PHONE_RE.match(v):
+            raise ValueError("Enter a valid 10-digit Indian mobile number.")
+        return v
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=1, max_length=256)
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(min_length=1, max_length=512)
+    new_password: str = Field(min_length=1, max_length=256)
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=256)
+    new_password: str = Field(min_length=1, max_length=256)
+
+
+class UserOut(BaseModel):
+    id: str
+    email: str
+    full_name: str
+    role: str
+    status: str
+    must_change_password: bool
+
+    class Config:
+        from_attributes = True
+
+
+class FarmerProfileUpdate(BaseModel):
+    district: str | None = Field(default=None, max_length=100)
+    mandal: str | None = Field(default=None, max_length=100)
+    village: str | None = Field(default=None, max_length=150)
+    pin_code: str | None = None
+    farm_size: float | None = None
+    farm_size_unit: str | None = Field(default=None, max_length=20)
+    main_crops: str | None = Field(default=None, max_length=255)
+    irrigation_type: str | None = Field(default=None, max_length=50)
+    preferred_language: str | None = Field(default=None, max_length=20)
+    preferred_contact_method: str | None = Field(default=None, max_length=20)
+    public_data_opt_in: bool | None = None
+
+    @field_validator("pin_code")
+    @classmethod
+    def valid_pin(cls, v):
+        if v and not PIN_RE.match(v):
+            raise ValueError("Enter a valid 6-digit PIN code.")
+        return v
+
+
+class DealerApplicationCreate(BaseModel):
+    contact_person: str = Field(min_length=1, max_length=255)
+    business_name: str = Field(min_length=1, max_length=255)
+    email: EmailStr
+    phone: str
+    alternate_phone: str | None = Field(default=None, max_length=20)
+    address: str | None = Field(default=None, max_length=2000)
+    village_or_town: str | None = Field(default=None, max_length=150)
+    mandal: str | None = Field(default=None, max_length=100)
+    district: str = Field(min_length=1, max_length=100)
+    state: str = Field(default="Telangana", max_length=100)
+    pin_code: str | None = None
+    gstin: str | None = Field(default=None, max_length=20)
+    years_in_business: int | None = Field(default=None, ge=0, le=200)
+    main_crops_served: str | None = Field(default=None, max_length=255)
+    requested_territory: str | None = Field(default=None, max_length=255)
+    delivery_capability: bool = False
+    farmer_support_interest: bool = False
+    notes: str | None = Field(default=None, max_length=2000)
+    consent_given: bool
+
+    @field_validator("phone")
+    @classmethod
+    def valid_phone(cls, v):
+        if not PHONE_RE.match(v):
+            raise ValueError("Enter a valid 10-digit Indian mobile number.")
+        return v
+
+    @field_validator("pin_code")
+    @classmethod
+    def valid_pin(cls, v):
+        if v and not PIN_RE.match(v):
+            raise ValueError("Enter a valid 6-digit PIN code.")
+        return v
+
+    @field_validator("consent_given")
+    @classmethod
+    def must_consent(cls, v):
+        if not v:
+            raise ValueError("Consent is required to submit a dealer application.")
+        return v
+
+
+class DealerApplicationDecision(BaseModel):
+    reason: str | None = Field(default=None, max_length=2000)
+
+
+class ProductCreate(BaseModel):
+    sku: str = Field(min_length=1, max_length=60)
+    name: str = Field(min_length=1, max_length=255)
+    slug: str = Field(min_length=1, max_length=255)
+    category_id: str | None = None
+    product_type: str | None = Field(default=None, max_length=60)
+    short_description: str | None = Field(default=None, max_length=500)
+    full_description: str | None = Field(default=None, max_length=10000)
+    benefits: str | None = Field(default=None, max_length=5000)
+    recommended_crops: str | None = Field(default=None, max_length=255)
+    crop_stage: str | None = Field(default=None, max_length=100)
+    application_method: str | None = Field(default=None, max_length=255)
+    dosage_value: str | None = Field(default=None, max_length=50)
+    dosage_unit: str | None = Field(default=None, max_length=30)
+    pack_sizes: str | None = Field(default=None, max_length=255)
+    precautions: str | None = Field(default=None, max_length=5000)
+    regulatory_notes: str | None = Field(default=None, max_length=5000)
+
+    @field_validator("slug")
+    @classmethod
+    def valid_slug(cls, v):
+        if not SLUG_RE.match(v):
+            raise ValueError("Slug must be lowercase letters, numbers, and hyphens only.")
+        return v
+
+
+class ProductUpdate(ProductCreate):
+    pass
+
+
+class ProductStatusChange(BaseModel):
+    reason: str | None = Field(default=None, max_length=2000)
+
+
+class SupportCaseCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    description: str = Field(min_length=1, max_length=5000)
+    crop: str | None = Field(default=None, max_length=100)
+    crop_stage: str | None = Field(default=None, max_length=100)
+    district: str = Field(min_length=1, max_length=100)
+    mandal: str | None = Field(default=None, max_length=100)
+    village: str | None = Field(default=None, max_length=150)
+    severity: str = "medium"
+
+    @field_validator("severity")
+    @classmethod
+    def valid_severity(cls, v):
+        if v not in SEVERITY_VALUES:
+            raise ValueError(f"Severity must be one of: {', '.join(sorted(SEVERITY_VALUES))}.")
+        return v
+
+
+class CaseMessageCreate(BaseModel):
+    body: str = Field(min_length=1, max_length=5000)
+    is_private: bool = False
+
+
+class CaseAssignRequest(BaseModel):
+    dealer_id: str | None = None
+    field_officer_id: str | None = None
+    staff_id: str | None = None
+
+
+class CaseStatusChange(BaseModel):
+    status: str
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class FieldVisitCreate(BaseModel):
+    case_id: str
+    requested_date: dt.datetime | None = None
+    purpose: str | None = Field(default=None, max_length=500)
+    farmer_instructions: str | None = Field(default=None, max_length=2000)
+
+
+class FieldVisitSchedule(BaseModel):
+    assigned_officer_id: str
+    scheduled_start: dt.datetime
+    scheduled_end: dt.datetime
+    internal_instructions: str | None = Field(default=None, max_length=2000)
+
+
+class FieldVisitComplete(BaseModel):
+    visit_summary: str = Field(min_length=1, max_length=5000)
+    follow_up_required: bool = False
+
+
+class EnquiryCreate(BaseModel):
+    enquiry_type: str
+    name: str = Field(min_length=1, max_length=150)
+    email: EmailStr | None = None
+    phone: str | None = Field(default=None, max_length=20)
+    district: str | None = Field(default=None, max_length=100)
+    product_id: str | None = None
+    message: str = Field(min_length=1, max_length=5000)
+    # Consent must be explicitly given - it does not default to true.
+    consent_given: bool = False
+
+    @field_validator("enquiry_type")
+    @classmethod
+    def valid_type(cls, v):
+        if v not in ENQUIRY_TYPE_VALUES:
+            raise ValueError(f"Enquiry type must be one of: {', '.join(sorted(ENQUIRY_TYPE_VALUES))}.")
+        return v
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def blank_email_is_none(cls, v):
+        # The frontend's optional email field submits "" rather than
+        # omitting the key when left blank; without this, Pydantic's
+        # EmailStr validator rejects "" as "not a valid email address" even
+        # though the field is optional. An empty/whitespace-only value is
+        # treated the same as not having been provided at all.
+        if isinstance(v, str) and v.strip() == "":
+            return None
+        return v
+
+    @field_validator("phone")
+    @classmethod
+    def valid_phone(cls, v):
+        if v and not PHONE_RE.match(v):
+            raise ValueError("Enter a valid 10-digit Indian mobile number.")
+        return v
+
+    @field_validator("consent_given")
+    @classmethod
+    def must_consent(cls, v):
+        if not v:
+            raise ValueError("Consent is required to submit an enquiry.")
+        return v
+
+
+class ReviewCreate(BaseModel):
+    reviewer_name: str = Field(min_length=1, max_length=150)
+    rating: int
+    comment: str | None = Field(default=None, max_length=2000)
+
+    @field_validator("rating")
+    @classmethod
+    def valid_rating(cls, v):
+        if v < 1 or v > 5:
+            raise ValueError("Rating must be between 1 and 5.")
+        return v
+
+
+class ReviewModeration(BaseModel):
+    status: str
+    moderator_notes: str | None = Field(default=None, max_length=2000)
+
+
+class CompanySettingUpdate(BaseModel):
+    key: str = Field(min_length=1, max_length=100)
+    value: str | None = Field(default=None, max_length=5000)
+
+
+class AnnouncementCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    slug: str = Field(min_length=1, max_length=255)
+    summary: str | None = Field(default=None, max_length=500)
+    body: str = Field(min_length=1, max_length=10000)
+    announcement_type: str = "general"
+    featured: bool = False
+    publish_date: dt.datetime | None = None
+    expiry_date: dt.datetime | None = None
+
+    @field_validator("slug")
+    @classmethod
+    def valid_slug(cls, v):
+        if not SLUG_RE.match(v):
+            raise ValueError("Slug must be lowercase letters, numbers, and hyphens only.")
+        return v
+
+
+class KnowledgeArticleCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    slug: str = Field(min_length=1, max_length=255)
+    summary: str | None = Field(default=None, max_length=500)
+    body: str = Field(min_length=1, max_length=20000)
+    topic: str | None = Field(default=None, max_length=100)
+    crops: str | None = Field(default=None, max_length=255)
+    region: str | None = Field(default=None, max_length=150)
+
+    @field_validator("slug")
+    @classmethod
+    def valid_slug(cls, v):
+        if not SLUG_RE.match(v):
+            raise ValueError("Slug must be lowercase letters, numbers, and hyphens only.")
+        return v
+
+
+class FollowUpTaskCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    description: str | None = Field(default=None, max_length=5000)
+    related_entity_type: str | None = Field(default=None, max_length=50)
+    related_entity_id: str | None = None
+    assigned_user_id: str | None = None
+    priority: str = "normal"
+    due_date: dt.datetime | None = None
+
+
+# ---------------------------------------------------------------------------
+# OTP-gated signup
+# ---------------------------------------------------------------------------
+
+SIGNUP_ROLE_VALUES = {"farmer", "dealer_applicant", "distributor_applicant"}
+# dealer_applicant/distributor_applicant just create a farmer-equivalent
+# base account that then goes through the existing dealer/distributor
+# application workflow - this endpoint issues no dealer/distributor role
+# directly, since that role is only ever granted on application approval.
+
+
+class SignupRequest(BaseModel):
+    full_name: str = Field(min_length=1, max_length=150)
+    email: EmailStr
+    phone: str
+    password: str = Field(min_length=1, max_length=256)
+
+    @field_validator("phone")
+    @classmethod
+    def valid_phone(cls, v):
+        if not PHONE_RE.match(v):
+            raise ValueError("Enter a valid 10-digit Indian mobile number.")
+        return v
+
+
+class VerifyOtpRequest(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=4, max_length=10)
+
+
+# ---------------------------------------------------------------------------
+# Distributors
+# ---------------------------------------------------------------------------
+
+class DistributorApplicationCreate(BaseModel):
+    contact_person: str = Field(min_length=1, max_length=255)
+    business_name: str = Field(min_length=1, max_length=255)
+    email: EmailStr
+    phone: str
+    alternate_phone: str | None = Field(default=None, max_length=20)
+    address: str | None = Field(default=None, max_length=2000)
+    territory: str = Field(min_length=1, max_length=255)
+    state: str = Field(default="Telangana", max_length=100)
+    pin_code: str | None = None
+    gstin: str | None = Field(default=None, max_length=20)
+    years_in_business: int | None = None
+    warehouse_capacity_notes: str | None = Field(default=None, max_length=2000)
+    notes: str | None = Field(default=None, max_length=2000)
+    consent_given: bool = False
+
+    @field_validator("phone")
+    @classmethod
+    def valid_phone(cls, v):
+        if not PHONE_RE.match(v):
+            raise ValueError("Enter a valid 10-digit Indian mobile number.")
+        return v
+
+    @field_validator("consent_given")
+    @classmethod
+    def must_consent(cls, v):
+        if not v:
+            raise ValueError("Consent is required to submit a distributor application.")
+        return v
+
+
+class DistributorApplicationDecision(BaseModel):
+    reason: str | None = Field(default=None, max_length=2000)
+
+
+# ---------------------------------------------------------------------------
+# Company certificates & official documents
+# ---------------------------------------------------------------------------
+
+COMPANY_DOCUMENT_TYPES = {
+    "company_certificate", "registration_document", "manufacturing_certificate",
+    "quality_certificate", "compliance_document", "licence", "product_certificate", "other",
+}
+
+
+class CompanyDocumentCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    document_type: str
+    media_id: str
+    reference_number: str | None = Field(default=None, max_length=100)
+    issuing_authority: str | None = Field(default=None, max_length=255)
+    issue_date: dt.datetime | None = None
+    expiry_date: dt.datetime | None = None
+    notes: str | None = Field(default=None, max_length=2000)
+
+    @field_validator("document_type")
+    @classmethod
+    def valid_type(cls, v):
+        if v not in COMPANY_DOCUMENT_TYPES:
+            raise ValueError(f"Document type must be one of: {', '.join(sorted(COMPANY_DOCUMENT_TYPES))}.")
+        return v
+
+
+class CompanyDocumentReview(BaseModel):
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+# ---------------------------------------------------------------------------
+# Agriculture photo gallery
+# ---------------------------------------------------------------------------
+
+AGRICULTURE_PHOTO_CATEGORIES = {
+    "farmers", "farms", "fields", "crops", "product_application", "dealer_network",
+    "distributor_network", "field_visits", "agricultural_activities",
+    "company_facilities", "manufacturing", "research", "community_activities",
+}
+
+
+class AgriculturePhotoCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    caption: str | None = Field(default=None, max_length=500)
+    description: str | None = Field(default=None, max_length=3000)
+    category: str
+    location: str | None = Field(default=None, max_length=255)
+    crop: str | None = Field(default=None, max_length=150)
+    photo_date: dt.datetime | None = None
+    photographer_source: str | None = Field(default=None, max_length=255)
+    usage_rights_verified: bool = False
+    usage_rights_notes: str | None = Field(default=None, max_length=500)
+    alt_text: str = Field(min_length=1, max_length=300)
+    media_id: str
+
+    @field_validator("category")
+    @classmethod
+    def valid_category(cls, v):
+        if v not in AGRICULTURE_PHOTO_CATEGORIES:
+            raise ValueError(f"Category must be one of: {', '.join(sorted(AGRICULTURE_PHOTO_CATEGORIES))}.")
+        return v

@@ -1,0 +1,17 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - alert_rules.yml
+
+scrape_configs:
+  - job_name: rockstar-organics-backend
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["backend:8000"]
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []  # point at an Alertmanager instance to enable delivery

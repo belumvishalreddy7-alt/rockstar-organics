@@ -1,0 +1,36 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: rso-db-backup
+  namespace: rockstar-organics
+spec:
+  schedule: "0 3 * * *"  # daily at 03:00 UTC
+  successfulJobsHistoryLimit: 7
+  failedJobsHistoryLimit: 7
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: backup
+              image: postgres:16-alpine  # provides pg_dump; install awscli via a custom image in real use
+              command: ["/bin/sh", "-c", "apk add --no-cache aws-cli bash >/dev/null && bash /scripts/backup_db.sh"]
+              envFrom:
+                - secretRef:
+                    name: rso-backend-secrets
+              env:
+                - name: BACKUP_S3_BUCKET
+                  valueFrom:
+                    configMapKeyRef:
+                      name: rso-config
+                      key: BACKUP_S3_BUCKET
+              volumeMounts:
+                - name: backup-scripts
+                  mountPath: /scripts
+          volumes:
+            - name: backup-scripts
+              configMap:
+                name: rso-backup-scripts
+                defaultMode: 0755

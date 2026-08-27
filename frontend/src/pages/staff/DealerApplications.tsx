@@ -1,0 +1,82 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Fragment, useState } from "react";
+import { api } from "../../api/client";
+import { EmptyState } from "../../components/EmptyState";
+import { StatusBadge } from "../../components/StatusBadge";
+
+interface AppRow { id: string; reference_number: string; business_name: string; district: string; status: string; created_at: string; }
+
+interface DocRow { id: string; original_filename: string; created_at: string; }
+
+export function DealerApplications() {
+  const qc = useQueryClient();
+  const [credsMessage, setCredsMessage] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const { data, isLoading } = useQuery({ queryKey: ["dealer-applications"], queryFn: () => api.get<AppRow[]>("/dealers/applications") });
+  const { data: docs } = useQuery({
+    queryKey: ["dealer-app-docs", expanded],
+    queryFn: () => api.get<DocRow[]>(`/media/dealer-applications/${expanded}/documents`),
+    enabled: !!expanded,
+  });
+
+  const decide = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) => api.post(`/dealers/applications/${id}/status/${status}`, {}),
+    onSuccess: (r: unknown) => {
+      const res = r as { dealer_credentials?: { email: string; temporary_password: string } };
+      if (res.dealer_credentials) {
+        setCredsMessage(`Dealer account created: ${res.dealer_credentials.email} / temporary password: ${res.dealer_credentials.temporary_password}`);
+      }
+      qc.invalidateQueries({ queryKey: ["dealer-applications"] });
+    },
+  });
+
+  if (isLoading) return <div className="loading-state">Loading applications...</div>;
+  if (!data || data.length === 0) return <EmptyState title="No dealer applications yet." />;
+
+  return (
+    <div>
+      <h2>Dealer applications</h2>
+      {credsMessage && <div className="alert alert-success">{credsMessage}</div>}
+      <div className="table-scroll">
+        <table className="data-table">
+          <thead><tr><th>Reference</th><th>Business</th><th>District</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody>
+            {data.map((a) => (
+              <Fragment key={a.id}>
+              <tr>
+                <td>{a.reference_number}</td><td>{a.business_name}</td><td>{a.district}</td>
+                <td><StatusBadge status={a.status} /></td>
+                <td className="inline">
+                  {["new", "under_review", "information_required", "contacted", "on_hold"].includes(a.status) && (
+                    <>
+                      <button className="btn btn-primary btn-sm" onClick={() => decide.mutate({ id: a.id, status: "approved" })}>Approve</button>
+                      <button className="btn btn-danger btn-sm" onClick={() => decide.mutate({ id: a.id, status: "rejected" })}>Reject</button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => decide.mutate({ id: a.id, status: "under_review" })}>Mark under review</button>
+                    </>
+                  )}
+                  <button className="btn btn-ghost btn-sm" onClick={() => setExpanded(expanded === a.id ? null : a.id)}>
+                    {expanded === a.id ? "Hide documents" : "View documents"}
+                  </button>
+                </td>
+              </tr>
+              {expanded === a.id && (
+                <tr>
+                  <td colSpan={5}>
+                    <div className="panel">
+                      <h4>Submitted documents</h4>
+                      {docs && docs.length === 0 && <p className="small muted">No documents submitted.</p>}
+                      <ul>
+                        {docs?.map((d) => <li key={d.id}>{d.original_filename} — {new Date(d.created_at).toLocaleDateString()}</li>)}
+                      </ul>
+                    </div>
+                  </td>
+                </tr>
+              )}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}

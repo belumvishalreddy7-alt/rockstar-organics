@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rso-config
+  namespace: rockstar-organics
+data:
+  ENVIRONMENT: "production"
+  COOKIE_SECURE: "true"
+  DEV_EXPOSE_RESET_TOKEN: "false"
+  METRICS_ENABLED: "true"
+  CORS_ORIGINS: '["https://app.rockstarorganics.example"]'
+  BACKUP_S3_BUCKET: "s3://rockstar-organics-backups"

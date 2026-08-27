@@ -1,0 +1,314 @@
+import datetime as dt
+import hmac
+import secrets
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from sqlalchemy.orm import Session
+
+from app.core.audit import record_audit
+from app.core.config import get_settings
+from app.core.csrf import csrf_cookie_kwargs, new_csrf_token
+from app.core.database import get_db
+from app.core.deps import create_session_value, get_current_user, require_user
+from app.core.email import otp_email, password_reset_email, send_email, welcome_email
+from app.core.permissions import ROLE_FARMER
+from app.core.rate_limit import rate_limiter
+from app.core.security import (
+    generate_token,
+    hash_password,
+    hash_token,
+    password_strength_errors,
+    verify_password,
+)
+from app.models.models import FarmerProfile, OtpCode, PasswordResetToken, User
+from app.schemas.schemas import (
+    ChangePasswordRequest,
+    ForgotPasswordRequest,
+    LoginRequest,
+    RegisterFarmerRequest,
+    ResetPasswordRequest,
+    SignupRequest,
+    UserOut,
+    VerifyOtpRequest,
+)
+
+router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+settings = get_settings()
+
+GENERIC_LOGIN_ERROR = "Incorrect email or password."
+
+
+def _issue_session(response: Response, user: User) -> None:
+    """Sets both the HttpOnly session cookie and the readable CSRF cookie.
+    Called on every event that establishes or rotates a session (register,
+    login, password change, password reset) so a stale CSRF token from
+    before never lingers."""
+    response.set_cookie(
+        key=settings.SESSION_COOKIE_NAME,
+        value=create_session_value(user),
+        max_age=settings.SESSION_MAX_AGE_SECONDS,
+        httponly=True,
+        secure=settings.COOKIE_SECURE,
+        samesite=settings.COOKIE_SAMESITE,
+        path="/",
+    )
+    response.set_cookie(value=new_csrf_token(), **csrf_cookie_kwargs())
+
+
+@router.post("/register", response_model=UserOut)
+def register_farmer(payload: RegisterFarmerRequest, request: Request, response: Response, db: Session = Depends(get_db)):
+    limiter_key = f"register:{request.client.host if request.client else 'unknown'}"
+    if not rate_limiter.check(limiter_key, settings.PUBLIC_FORM_RATE_LIMIT_ATTEMPTS, settings.PUBLIC_FORM_RATE_LIMIT_WINDOW_SECONDS):
+        raise HTTPException(status_code=429, detail="Too many registration attempts. Please try again later.")
+
+    existing = db.query(User).filter(User.email == payload.email.lower()).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="An account with this email already exists.")
+    errors = password_strength_errors(payload.password)
+    if errors:
+        raise HTTPException(status_code=400, detail=" ".join(errors))
+
+    user = User(
+        email=payload.email.lower(),
+        password_hash=hash_password(payload.password),
+        role=ROLE_FARMER,
+        full_name=payload.full_name,
+        phone=payload.phone,
+        status="active",
+        password_changed_at=dt.datetime.utcnow(),
+    )
+    db.add(user)
+    db.flush()
+    db.add(FarmerProfile(user_id=user.id))
+    record_audit(db, actor_id=user.id, action="user.register", entity_type="user", entity_id=user.id,
+                 summary=f"Farmer account registered: {user.email}")
+    db.commit()
+    db.refresh(user)
+    _issue_session(response, user)
+
+    html, text = welcome_email(user.full_name, "Farmer")
+    send_email(to=user.email, subject="Welcome to Rockstar Organics", html=html, text=text)
+    return user
+
+
+def _generate_otp_code() -> str:
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+@router.post("/signup")
+def signup(payload: SignupRequest, request: Request, db: Session = Depends(get_db)):
+    """OTP-gated signup, per the real-world content spec: signup ->
+    validation -> OTP verification -> account creation -> login. No User
+    row is created until the OTP is verified (see verify_otp below) - the
+    pending account data is held in OtpCode until then."""
+    limiter_key = f"signup:{request.client.host if request.client else 'unknown'}"
+    if not rate_limiter.check(limiter_key, settings.PUBLIC_FORM_RATE_LIMIT_ATTEMPTS, settings.PUBLIC_FORM_RATE_LIMIT_WINDOW_SECONDS):
+        raise HTTPException(status_code=429, detail="Too many signup attempts. Please try again later.")
+
+    existing = db.query(User).filter(User.email == payload.email.lower()).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="An account with this email already exists.")
+    errors = password_strength_errors(payload.password)
+    if errors:
+        raise HTTPException(status_code=400, detail=" ".join(errors))
+
+    # Replace any prior unconsumed OTP for this email so only the latest
+    # signup attempt's code is valid.
+    db.query(OtpCode).filter(OtpCode.email == payload.email.lower(), OtpCode.purpose == "signup", OtpCode.consumed_at.is_(None)).delete()
+
+    code = _generate_otp_code()
+    otp = OtpCode(
+        email=payload.email.lower(),
+        code_hash=hash_token(code, settings.SECRET_KEY),
+        purpose="signup",
+        pending_full_name=payload.full_name,
+        pending_phone=payload.phone,
+        pending_password_hash=hash_password(payload.password),
+        pending_role=ROLE_FARMER,
+        expires_at=dt.datetime.utcnow() + dt.timedelta(minutes=settings.OTP_TTL_MINUTES),
+    )
+    db.add(otp)
+    record_audit(db, actor_id=None, action="user.signup_otp_requested", entity_type="user", entity_id=None,
+                 summary=f"Signup OTP requested for {payload.email.lower()}")
+    db.commit()
+
+    html, text = otp_email(code)
+    email_result = send_email(to=payload.email, subject="Your Rockstar Organics verification code", html=html, text=text)
+
+    response = {"ok": True, "message": "A verification code has been sent to your email.", "email_sent": email_result.sent}
+    # DEV_EXPOSE_OTP is its own explicit gate, independent of ENVIRONMENT -
+    # see Settings.DEV_EXPOSE_OTP's docstring for why this deployment
+    # currently has it on in production (Resend has no verified sending
+    # domain yet, so real delivery only reaches the provider account's own
+    # address; this is the disclosed, temporary fallback until a domain is
+    # verified).
+    if settings.DEV_EXPOSE_OTP:
+        response["dev_otp_code"] = code
+    return response
+
+
+@router.post("/verify-otp", response_model=UserOut)
+def verify_otp(payload: VerifyOtpRequest, response: Response, db: Session = Depends(get_db)):
+    otp = (
+        db.query(OtpCode)
+        .filter(OtpCode.email == payload.email.lower(), OtpCode.purpose == "signup", OtpCode.consumed_at.is_(None))
+        .order_by(OtpCode.created_at.desc())
+        .first()
+    )
+    if not otp or otp.expires_at < dt.datetime.utcnow():
+        raise HTTPException(status_code=400, detail="This verification code is invalid or has expired. Please sign up again.")
+    if otp.attempts >= settings.OTP_MAX_ATTEMPTS:
+        raise HTTPException(status_code=400, detail="Too many incorrect attempts. Please sign up again to get a new code.")
+
+    if not hmac.compare_digest(hash_token(payload.code, settings.SECRET_KEY), otp.code_hash):
+        otp.attempts += 1
+        db.commit()
+        raise HTTPException(status_code=400, detail="Incorrect verification code.")
+
+    existing = db.query(User).filter(User.email == otp.email).first()
+    if existing:
+        otp.consumed_at = dt.datetime.utcnow()
+        db.commit()
+        raise HTTPException(status_code=400, detail="An account with this email already exists.")
+
+    user = User(
+        email=otp.email,
+        password_hash=otp.pending_password_hash,
+        role=otp.pending_role,
+        full_name=otp.pending_full_name,
+        phone=otp.pending_phone,
+        status="active",
+        email_verified=True,
+        password_changed_at=dt.datetime.utcnow(),
+    )
+    db.add(user)
+    db.flush()
+    if user.role == ROLE_FARMER:
+        db.add(FarmerProfile(user_id=user.id))
+    otp.consumed_at = dt.datetime.utcnow()
+    record_audit(db, actor_id=user.id, action="user.signup_verified", entity_type="user", entity_id=user.id,
+                 summary=f"Account created via OTP-verified signup: {user.email}")
+    db.commit()
+    db.refresh(user)
+    _issue_session(response, user)
+
+    html, text = welcome_email(user.full_name, "Farmer")
+    send_email(to=user.email, subject="Welcome to Rockstar Organics", html=html, text=text)
+    return user
+
+
+@router.post("/login", response_model=UserOut)
+def login(payload: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
+    limiter_key = f"login:{request.client.host if request.client else 'unknown'}:{payload.email.lower()}"
+    if not rate_limiter.check(limiter_key, settings.LOGIN_RATE_LIMIT_ATTEMPTS, settings.LOGIN_RATE_LIMIT_WINDOW_SECONDS):
+        raise HTTPException(status_code=429, detail="Too many login attempts. Please try again later.")
+
+    user = db.query(User).filter(User.email == payload.email.lower()).first()
+    if not user or not verify_password(payload.password, user.password_hash):
+        raise HTTPException(status_code=401, detail=GENERIC_LOGIN_ERROR)
+    if user.status != "active":
+        raise HTTPException(status_code=401, detail=GENERIC_LOGIN_ERROR)
+
+    record_audit(db, actor_id=user.id, action="user.login", entity_type="user", entity_id=user.id,
+                 summary=f"User signed in: {user.email}",
+                 ip_address=request.client.host if request.client else None,
+                 user_agent=request.headers.get("user-agent"))
+    db.commit()
+    _issue_session(response, user)
+    return user
+
+
+@router.post("/logout")
+def logout(response: Response):
+    response.delete_cookie(settings.SESSION_COOKIE_NAME, path="/")
+    response.delete_cookie("rso_csrf", path="/")
+    return {"ok": True}
+
+
+@router.get("/me", response_model=UserOut | None)
+def me(user: User | None = Depends(get_current_user)):
+    return user
+
+
+@router.post("/change-password")
+def change_password(payload: ChangePasswordRequest, response: Response, user: User = Depends(require_user), db: Session = Depends(get_db)):
+    """Lets a signed-in user (including one with must_change_password set,
+    e.g. a freshly approved dealer or invited staff member) change their
+    own password by proving they know the current one. This is distinct
+    from the forgot-password flow, which is for someone who is locked out."""
+    if not verify_password(payload.current_password, user.password_hash):
+        raise HTTPException(status_code=400, detail="Current password is incorrect.")
+    errors = password_strength_errors(payload.new_password)
+    if errors:
+        raise HTTPException(status_code=400, detail=" ".join(errors))
+    if payload.new_password == payload.current_password:
+        raise HTTPException(status_code=400, detail="New password must be different from the current password.")
+
+    user.password_hash = hash_password(payload.new_password)
+    user.must_change_password = False
+    user.password_changed_at = dt.datetime.utcnow()
+    record_audit(db, actor_id=user.id, action="user.password_changed", entity_type="user", entity_id=user.id,
+                 summary="Password changed by user")
+    db.commit()
+    db.refresh(user)
+    _issue_session(response, user)  # old sessions/tokens are now invalid; reissue this one
+    return user
+
+
+@router.post("/forgot-password")
+def forgot_password(payload: ForgotPasswordRequest, request: Request, db: Session = Depends(get_db)):
+    limiter_key = f"forgot:{request.client.host if request.client else 'unknown'}"
+    if not rate_limiter.check(limiter_key, settings.PUBLIC_FORM_RATE_LIMIT_ATTEMPTS, settings.PUBLIC_FORM_RATE_LIMIT_WINDOW_SECONDS):
+        raise HTTPException(status_code=429, detail="Too many requests. Please try again later.")
+
+    user = db.query(User).filter(User.email == payload.email.lower()).first()
+    generic_response = {"ok": True, "message": "If that email exists, a reset link has been generated."}
+    if not user:
+        return generic_response
+
+    token = generate_token()
+    reset = PasswordResetToken(
+        user_id=user.id,
+        token_hash=hash_token(token, settings.SECRET_KEY),
+        expires_at=dt.datetime.utcnow() + dt.timedelta(minutes=settings.PASSWORD_RESET_TOKEN_TTL_MINUTES),
+    )
+    db.add(reset)
+    record_audit(db, actor_id=user.id, action="user.password_reset_requested", entity_type="user", entity_id=user.id,
+                 summary="Password reset requested")
+    db.commit()
+
+    reset_url = f"{settings.PUBLIC_APP_URL}/reset-password?token={token}"
+    html, text = password_reset_email(reset_url)
+    email_result = send_email(to=user.email, subject="Reset your Rockstar Organics password", html=html, text=text)
+    generic_response["email_sent"] = email_result.sent
+
+    # See the matching comment in signup() above: DEV_EXPOSE_RESET_TOKEN is
+    # its own explicit gate now, independent of ENVIRONMENT.
+    if settings.DEV_EXPOSE_RESET_TOKEN:
+        generic_response["dev_reset_token"] = token
+    return generic_response
+
+
+@router.post("/reset-password")
+def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db)):
+    errors = password_strength_errors(payload.new_password)
+    if errors:
+        raise HTTPException(status_code=400, detail=" ".join(errors))
+
+    token_hash = hash_token(payload.token, settings.SECRET_KEY)
+    reset = db.query(PasswordResetToken).filter(PasswordResetToken.token_hash == token_hash).first()
+    if not reset or reset.used_at or reset.expires_at < dt.datetime.utcnow():
+        raise HTTPException(status_code=400, detail="This reset link is invalid or has expired.")
+
+    user = db.get(User, reset.user_id)
+    if not user:
+        raise HTTPException(status_code=400, detail="This reset link is invalid or has expired.")
+
+    user.password_hash = hash_password(payload.new_password)
+    user.must_change_password = False
+    user.password_changed_at = dt.datetime.utcnow()
+    reset.used_at = dt.datetime.utcnow()
+    record_audit(db, actor_id=user.id, action="user.password_reset_completed", entity_type="user", entity_id=user.id,
+                 summary="Password reset completed")
+    db.commit()
+    return {"ok": True}

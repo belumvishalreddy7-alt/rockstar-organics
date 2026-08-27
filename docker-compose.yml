@@ -1,0 +1,95 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: rockstar_organics
+      POSTGRES_USER: rso_user
+      POSTGRES_PASSWORD: rso_password
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rso_user -d rockstar_organics"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      ENVIRONMENT: production
+      SECRET_KEY: ${SECRET_KEY:-change-me-to-a-long-random-value}
+      DATABASE_URL: postgresql+psycopg2://rso_user:rso_password@db:5432/rockstar_organics
+      REDIS_URL: redis://redis:6379/0
+      COOKIE_SECURE: "true"
+      DEV_EXPOSE_RESET_TOKEN: "false"
+      CORS_ORIGINS: '["http://localhost"]'
+      METRICS_ENABLED: "true"
+      SENTRY_DSN: ${SENTRY_DSN:-}
+    volumes:
+      - uploads_data:/app/uploads
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+
+  prometheus:
+    image: prom/prometheus:v2.55.0
+    restart: unless-stopped
+    depends_on:
+      - backend
+    volumes:
+      - ./ops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    profiles: ["monitoring"]
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-change-me}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./ops/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    profiles: ["monitoring"]
+
+volumes:
+  db_data:
+  uploads_data:
+  prometheus_data:
+  grafana_data:
