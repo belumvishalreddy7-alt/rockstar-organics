@@ -45,7 +45,7 @@ check("GET /api/v1/settings/public", r.status_code == 200, r.text)
 
 # Full real signup -> OTP -> verify flow (dev_otp_code is how we read the
 # code back out in this sandbox test; the live deployment additionally
-# genuinely attempts real delivery via Resend on the same call).
+# genuinely attempts real delivery via Brevo on the same call).
 signup_email = "smoketest.farmer@example.com"
 r = client.post("/api/v1/auth/signup", json={
     "full_name": "Smoke Test Farmer", "email": signup_email, "phone": "9876543210", "password": "Str0ngPassw0rd!",

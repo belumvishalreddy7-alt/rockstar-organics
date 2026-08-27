@@ -25,7 +25,7 @@ from app.core.rate_limit import rate_limiter
 from app.core.references import generate_reference
 from app.core.security import hash_password
 from app.models.models import DistributorApplication, DistributorProfile, DistributorStock, Product, User
-from app.schemas.schemas import DistributorApplicationCreate, DistributorApplicationDecision
+from app.schemas.schemas import DistributorApplicationCreate, DistributorApplicationDecision, DistributorProfileUpdate
 
 router = APIRouter(prefix="/api/v1/distributors", tags=["distributors"])
 settings = get_settings()
@@ -142,13 +142,12 @@ def my_profile(user: User = Depends(require_roles(ROLE_DISTRIBUTOR)), db: Sessio
 
 
 @router.put("/me/profile")
-def update_my_profile(payload: dict, user: User = Depends(require_roles(ROLE_DISTRIBUTOR)), db: Session = Depends(get_db)):
+def update_my_profile(payload: DistributorProfileUpdate, user: User = Depends(require_roles(ROLE_DISTRIBUTOR)), db: Session = Depends(get_db)):
     profile = db.query(DistributorProfile).filter(DistributorProfile.user_id == user.id).first()
     if not profile:
         raise HTTPException(status_code=404, detail="Distributor profile not found.")
-    for field in ["territory", "public_phone", "public_email", "address"]:
-        if field in payload:
-            setattr(profile, field, payload[field])
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(profile, field, value)
     profile.last_activity_at = dt.datetime.utcnow()
     record_audit(db, actor_id=user.id, action="distributor.profile_update", entity_type="distributor_profile", entity_id=profile.id,
                  summary="Distributor updated their profile")
@@ -165,6 +164,8 @@ def set_stock(product_id: str, status: str, quantity_note: str | None = None,
     if not product or product.status != "published":
         raise HTTPException(status_code=400, detail="Only published products may have stock declared.")
     profile = db.query(DistributorProfile).filter(DistributorProfile.user_id == user.id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Distributor profile not found.")
     record = db.query(DistributorStock).filter(DistributorStock.distributor_id == profile.id, DistributorStock.product_id == product_id).first()
     if not record:
         record = DistributorStock(distributor_id=profile.id, product_id=product_id)

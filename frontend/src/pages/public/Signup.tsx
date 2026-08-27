@@ -93,11 +93,11 @@ function FarmerSignupForm() {
       {step === "details" && (
         <form onSubmit={(e) => { e.preventDefault(); requestOtp.mutate(); }}>
           <div className="field"><label htmlFor="full_name">Full name</label>
-            <input id="full_name" required value={details.full_name} onChange={(e) => setDetails({ ...details, full_name: e.target.value })} /></div>
+            <input type="text" id="full_name" required value={details.full_name} onChange={(e) => setDetails({ ...details, full_name: e.target.value })} /></div>
           <div className="field"><label htmlFor="email">Email</label>
             <input id="email" type="email" required value={details.email} onChange={(e) => setDetails({ ...details, email: e.target.value })} /></div>
           <div className="field"><label htmlFor="phone">Phone (10-digit mobile)</label>
-            <input id="phone" required value={details.phone} onChange={(e) => setDetails({ ...details, phone: e.target.value })} /></div>
+            <input type="text" id="phone" required value={details.phone} onChange={(e) => setDetails({ ...details, phone: e.target.value })} /></div>
           <div className="field"><label htmlFor="password">Password</label>
             <input id="password" type="password" required value={details.password} onChange={(e) => setDetails({ ...details, password: e.target.value })} />
             <p className="hint">At least 10 characters, with uppercase, lowercase, and a digit.</p></div>
@@ -117,7 +117,7 @@ function FarmerSignupForm() {
             <div className="alert alert-info">Development mode: your code is <strong>{devOtp}</strong>.</div>
           )}
           <div className="field"><label htmlFor="code">Verification code</label>
-            <input id="code" required inputMode="numeric" maxLength={6} value={code} onChange={(e) => setCode(e.target.value)} /></div>
+            <input type="text" id="code" required inputMode="numeric" maxLength={6} value={code} onChange={(e) => setCode(e.target.value)} /></div>
           <button className="btn btn-primary" type="submit" disabled={verifyOtp.isPending}>
             {verifyOtp.isPending ? "Verifying..." : "Verify and create account"}
           </button>
@@ -187,19 +187,19 @@ function DealerSignupForm() {
     <form onSubmit={(e) => { e.preventDefault(); submit.mutate(); }}>
       {error && <div className="alert alert-error">{error}</div>}
       <div className="field"><label htmlFor="d-contact_person">Contact person</label>
-        <input id="d-contact_person" required value={form.contact_person} onChange={(e) => setForm({ ...form, contact_person: e.target.value })} /></div>
+        <input type="text" id="d-contact_person" required value={form.contact_person} onChange={(e) => setForm({ ...form, contact_person: e.target.value })} /></div>
       <div className="field"><label htmlFor="d-business_name">Business name</label>
-        <input id="d-business_name" required value={form.business_name} onChange={(e) => setForm({ ...form, business_name: e.target.value })} /></div>
+        <input type="text" id="d-business_name" required value={form.business_name} onChange={(e) => setForm({ ...form, business_name: e.target.value })} /></div>
       <div className="field"><label htmlFor="d-email">Email</label>
         <input id="d-email" type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
       <div className="field"><label htmlFor="d-phone">Phone (10-digit mobile)</label>
-        <input id="d-phone" required value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
+        <input type="text" id="d-phone" required value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
       <div className="field"><label htmlFor="d-district">District</label>
-        <input id="d-district" required value={form.district} onChange={(e) => setForm({ ...form, district: e.target.value })} /></div>
+        <input type="text" id="d-district" required value={form.district} onChange={(e) => setForm({ ...form, district: e.target.value })} /></div>
       <div className="field"><label htmlFor="d-mandal">Mandal (optional)</label>
-        <input id="d-mandal" value={form.mandal} onChange={(e) => setForm({ ...form, mandal: e.target.value })} /></div>
+        <input type="text" id="d-mandal" value={form.mandal} onChange={(e) => setForm({ ...form, mandal: e.target.value })} /></div>
       <div className="field"><label htmlFor="d-territory">Requested territory (optional)</label>
-        <input id="d-territory" value={form.requested_territory} onChange={(e) => setForm({ ...form, requested_territory: e.target.value })} /></div>
+        <input type="text" id="d-territory" value={form.requested_territory} onChange={(e) => setForm({ ...form, requested_territory: e.target.value })} /></div>
       <div className="field"><label htmlFor="d-notes">Additional notes (optional)</label>
         <textarea id="d-notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
       <div className="field">
@@ -256,15 +256,15 @@ function DistributorSignupForm() {
     <form onSubmit={(e) => { e.preventDefault(); submit.mutate(); }}>
       {error && <div className="alert alert-error">{error}</div>}
       <div className="field"><label htmlFor="dist-contact_person">Contact person</label>
-        <input id="dist-contact_person" required value={form.contact_person} onChange={(e) => setForm({ ...form, contact_person: e.target.value })} /></div>
+        <input type="text" id="dist-contact_person" required value={form.contact_person} onChange={(e) => setForm({ ...form, contact_person: e.target.value })} /></div>
       <div className="field"><label htmlFor="dist-business_name">Business name</label>
-        <input id="dist-business_name" required value={form.business_name} onChange={(e) => setForm({ ...form, business_name: e.target.value })} /></div>
+        <input type="text" id="dist-business_name" required value={form.business_name} onChange={(e) => setForm({ ...form, business_name: e.target.value })} /></div>
       <div className="field"><label htmlFor="dist-email">Email</label>
         <input id="dist-email" type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
       <div className="field"><label htmlFor="dist-phone">Phone (10-digit mobile)</label>
-        <input id="dist-phone" required value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
+        <input type="text" id="dist-phone" required value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
       <div className="field"><label htmlFor="dist-territory">Requested territory</label>
-        <input id="dist-territory" required value={form.territory} onChange={(e) => setForm({ ...form, territory: e.target.value })} /></div>
+        <input type="text" id="dist-territory" required value={form.territory} onChange={(e) => setForm({ ...form, territory: e.target.value })} /></div>
       <div className="field"><label htmlFor="dist-years">Years in business (optional)</label>
         <input id="dist-years" type="number" min="0" value={form.years_in_business} onChange={(e) => setForm({ ...form, years_in_business: e.target.value })} /></div>
       <div className="field"><label htmlFor="dist-warehouse">Warehouse capacity notes (optional)</label>

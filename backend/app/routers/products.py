@@ -2,7 +2,7 @@ import datetime as dt
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.audit import record_audit
 from app.core.database import get_db
@@ -24,17 +24,27 @@ VALID_TRANSITIONS = {
 }
 
 
-def _rating_summary(db: Session, product_id: str):
-    row = (
-        db.query(func.avg(ProductReview.rating), func.count(ProductReview.id))
-        .filter(ProductReview.product_id == product_id, ProductReview.status == "approved")
-        .one()
+def _rating_summaries(db: Session, product_ids: list[str]) -> dict[str, dict]:
+    """One aggregate query for a whole page of products instead of one
+    query per row - a page of `page_size=100` used to issue 100+ extra
+    round trips here (plus one lazy `p.images` load per row), which
+    matters once the database moves off a co-located instance to a
+    networked one with real per-query latency."""
+    summaries: dict[str, dict] = {pid: {"average_rating": None, "approved_review_count": 0} for pid in product_ids}
+    if not product_ids:
+        return summaries
+    rows = (
+        db.query(ProductReview.product_id, func.avg(ProductReview.rating), func.count(ProductReview.id))
+        .filter(ProductReview.product_id.in_(product_ids), ProductReview.status == "approved")
+        .group_by(ProductReview.product_id)
+        .all()
     )
-    avg, count = row
-    return {"average_rating": round(float(avg), 2) if avg else None, "approved_review_count": count or 0}
+    for pid, avg, count in rows:
+        summaries[pid] = {"average_rating": round(float(avg), 2) if avg else None, "approved_review_count": count or 0}
+    return summaries
 
 
-def _serialize(db: Session, p: Product) -> dict:
+def _serialize(p: Product, rating_summary: dict) -> dict:
     return {
         "id": p.id, "sku": p.sku, "name": p.name, "slug": p.slug, "category_id": p.category_id,
         "product_type": p.product_type, "short_description": p.short_description,
@@ -45,7 +55,7 @@ def _serialize(db: Session, p: Product) -> dict:
         "regulatory_notes": p.regulatory_notes, "status": p.status, "featured": p.featured,
         "updated_at": p.updated_at.isoformat() if p.updated_at else None,
         "images": [{"id": i.id, "file_path": i.file_path, "alt_text": i.alt_text} for i in p.images],
-        **_rating_summary(db, p.id),
+        **rating_summary,
     }
 
 
@@ -58,7 +68,7 @@ def public_catalogue(
     page_size: int = Query(12, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
-    query = db.query(Product).filter(Product.status == "published")
+    query = db.query(Product).options(joinedload(Product.images)).filter(Product.status == "published")
     if q:
         like = f"%{q}%"
         query = query.filter(Product.name.ilike(like) if hasattr(Product.name, "ilike") else Product.name.like(like))
@@ -68,7 +78,8 @@ def public_catalogue(
         query = query.filter(Product.recommended_crops.like(f"%{crop}%"))
     total = query.count()
     items = query.order_by(Product.published_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
-    return {"total": total, "page": page, "page_size": page_size, "items": [_serialize(db, p) for p in items]}
+    summaries = _rating_summaries(db, [p.id for p in items])
+    return {"total": total, "page": page, "page_size": page_size, "items": [_serialize(p, summaries[p.id]) for p in items]}
 
 
 @router.get("/public/{slug}")
@@ -76,7 +87,7 @@ def public_product_detail(slug: str, db: Session = Depends(get_db)):
     p = db.query(Product).filter(Product.slug == slug, Product.status == "published").first()
     if not p:
         raise HTTPException(status_code=404, detail="Product not found.")
-    out = _serialize(db, p)
+    out = _serialize(p, _rating_summaries(db, [p.id])[p.id])
     reviews = db.query(ProductReview).filter(ProductReview.product_id == p.id, ProductReview.status == "approved").order_by(ProductReview.created_at.desc()).all()
     out["reviews"] = [{"id": r.id, "reviewer_name": r.reviewer_name, "rating": r.rating, "comment": r.comment, "created_at": r.created_at.isoformat()} for r in reviews]
     return out
@@ -86,12 +97,13 @@ def public_product_detail(slug: str, db: Session = Depends(get_db)):
 def admin_list_products(status: str | None = None, page: int = 1, page_size: int = 20,
                          user: User = Depends(require_roles(*PRODUCT_MANAGERS, "super_admin")),
                          db: Session = Depends(get_db)):
-    query = db.query(Product)
+    query = db.query(Product).options(joinedload(Product.images))
     if status:
         query = query.filter(Product.status == status)
     total = query.count()
     items = query.order_by(Product.updated_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
-    return {"total": total, "items": [_serialize(db, p) for p in items]}
+    summaries = _rating_summaries(db, [p.id for p in items])
+    return {"total": total, "items": [_serialize(p, summaries[p.id]) for p in items]}
 
 
 @router.post("")
@@ -107,7 +119,7 @@ def create_product(payload: ProductCreate, user: User = Depends(require_roles(*P
     record_audit(db, actor_id=user.id, action="product.create", entity_type="product", entity_id=p.id, summary=f"Created draft product {p.name}")
     db.commit()
     db.refresh(p)
-    return _serialize(db, p)
+    return _serialize(p, _rating_summaries(db, [p.id])[p.id])
 
 
 @router.put("/{product_id}")
@@ -122,7 +134,7 @@ def update_product(product_id: str, payload: ProductUpdate, user: User = Depends
     record_audit(db, actor_id=user.id, action="product.update", entity_type="product", entity_id=p.id, summary=f"Updated product {p.name}")
     db.commit()
     db.refresh(p)
-    return _serialize(db, p)
+    return _serialize(p, _rating_summaries(db, [p.id])[p.id])
 
 
 @router.post("/{product_id}/transition/{new_status}")
@@ -162,7 +174,7 @@ def transition_product(product_id: str, new_status: str, payload: ProductStatusC
                  summary=f"Product {p.name} moved from {old_status} to {new_status}")
     db.commit()
     db.refresh(p)
-    return _serialize(db, p)
+    return _serialize(p, _rating_summaries(db, [p.id])[p.id])
 
 
 @router.delete("/{product_id}")

@@ -44,10 +44,10 @@ export function AnnouncementManagement() {
         <div className="panel">
           <form onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
             <div className="grid cols-2">
-              <div className="field"><label htmlFor="a-title">Title</label><input id="a-title" required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></div>
-              <div className="field"><label htmlFor="a-slug">Slug</label><input id="a-slug" required value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} /></div>
+              <div className="field"><label htmlFor="a-title">Title</label><input type="text" id="a-title" required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></div>
+              <div className="field"><label htmlFor="a-slug">Slug</label><input type="text" id="a-slug" required value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} /></div>
             </div>
-            <div className="field"><label htmlFor="a-summary">Summary</label><input id="a-summary" value={form.summary} onChange={(e) => setForm({ ...form, summary: e.target.value })} /></div>
+            <div className="field"><label htmlFor="a-summary">Summary</label><input type="text" id="a-summary" value={form.summary} onChange={(e) => setForm({ ...form, summary: e.target.value })} /></div>
             <div className="field"><label htmlFor="a-body">Body</label><textarea id="a-body" required value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} /></div>
             <button className="btn btn-primary" type="submit" disabled={create.isPending}>Save draft</button>
           </form>

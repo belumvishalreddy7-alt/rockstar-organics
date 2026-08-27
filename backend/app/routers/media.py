@@ -8,12 +8,14 @@ File upload and retrieval.
 - Dealer documents: private, uploaded during/after a dealer application;
   served only to dealer managers and the owning dealer.
 """
+import mimetypes
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
+from app.core import storage
 from app.core.audit import record_audit
 from app.core.config import get_settings
 from app.core.database import get_db
@@ -77,13 +79,21 @@ def _assert_case_access(db: Session, case_id: str, user: User) -> FarmerSupportC
     case = db.get(FarmerSupportCase, case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found.")
-    if user.role == ROLE_FARMER and case.farmer_id != user.id:
-        raise HTTPException(status_code=403, detail="You do not have access to this case.")
+    if user.role in CASE_MANAGERS:
+        return case
+    if user.role == ROLE_FARMER:
+        if case.farmer_id != user.id:
+            raise HTTPException(status_code=403, detail="You do not have access to this case.")
+        return case
     if user.role == ROLE_DEALER:
         profile = db.query(DealerProfile).filter(DealerProfile.user_id == user.id).first()
         if not profile or case.assigned_dealer_id != profile.id:
             raise HTTPException(status_code=403, detail="You do not have access to this case.")
-    return case
+        return case
+    # Any other role (content_manager, distributor, etc.) has no business
+    # relationship to farmer support cases at all - deny by default rather
+    # than falling through unrestricted.
+    raise HTTPException(status_code=403, detail="You do not have access to this case.")
 
 
 @router.post("/cases/{case_id}/attachments")
@@ -186,10 +196,10 @@ def serve_agriculture_photo(photo_id: str, db: Session = Depends(get_db)):
     record = db.get(MediaRecord, photo.media_id)
     if not record:
         raise HTTPException(status_code=404, detail="Photo not found.")
-    full_path = Path(settings.UPLOAD_ROOT) / record.file_path
-    if not full_path.exists():
+    content = storage.load(record.file_path)
+    if content is None:
         raise HTTPException(status_code=404, detail="Photo not found.")
-    return FileResponse(full_path)
+    return Response(content=content, media_type=record.content_type)
 
 
 @router.get("/certificates/{document_id}")
@@ -202,21 +212,29 @@ def serve_company_document(document_id: str, db: Session = Depends(get_db)):
     record = db.get(MediaRecord, doc.media_id)
     if not record:
         raise HTTPException(status_code=404, detail="Document not found.")
-    full_path = Path(settings.UPLOAD_ROOT) / record.file_path
-    if not full_path.exists():
+    content = storage.load(record.file_path)
+    if content is None:
         raise HTTPException(status_code=404, detail="Document not found.")
-    return FileResponse(full_path, filename=record.original_filename)
+    return Response(
+        content=content, media_type=record.content_type,
+        headers={"Content-Disposition": f'attachment; filename="{record.original_filename}"'},
+    )
 
 
 @router.get("/public/{subpath:path}")
-def serve_public_file(subpath: str):
-    full_path = Path(settings.UPLOAD_ROOT, settings.PUBLIC_UPLOAD_SUBDIR, subpath).resolve()
-    root = Path(settings.UPLOAD_ROOT, settings.PUBLIC_UPLOAD_SUBDIR).resolve()
-    if root not in full_path.parents and full_path != root:
+def serve_public_file(subpath: str, db: Session = Depends(get_db)):
+    # subpath comes straight from the URL - reject traversal attempts
+    # (a "..") or an absolute-looking path before ever building a storage
+    # key, regardless of which storage backend is active.
+    if not subpath or subpath.startswith("/") or ".." in Path(subpath).parts:
         raise HTTPException(status_code=404, detail="File not found.")
-    if not full_path.exists() or not full_path.is_file():
+    relative_path = f"{settings.PUBLIC_UPLOAD_SUBDIR}/{subpath}"
+    content = storage.load(relative_path)
+    if content is None:
         raise HTTPException(status_code=404, detail="File not found.")
-    return FileResponse(full_path)
+    record = db.query(MediaRecord).filter(MediaRecord.file_path == relative_path).first()
+    content_type = record.content_type if record else (mimetypes.guess_type(subpath)[0] or "application/octet-stream")
+    return Response(content=content, media_type=content_type)
 
 
 @router.get("/private/{record_id}")
@@ -228,12 +246,22 @@ def serve_private_file(record_id: str, user: User = Depends(require_user), db: S
     if record.purpose == "case_attachment":
         _assert_case_access(db, record.entity_id, user)
     elif record.purpose == "dealer_document":
-        if user.role not in DEALER_MANAGERS:
+        is_owning_dealer = (
+            user.role == ROLE_DEALER
+            and db.query(DealerProfile)
+            .filter(DealerProfile.user_id == user.id, DealerProfile.application_id == record.entity_id)
+            .first()
+            is not None
+        )
+        if user.role not in DEALER_MANAGERS and not is_owning_dealer:
             raise HTTPException(status_code=403, detail="You do not have access to this file.")
     else:
         raise HTTPException(status_code=403, detail="You do not have access to this file.")
 
-    full_path = Path(settings.UPLOAD_ROOT) / record.file_path
-    if not full_path.exists():
+    content = storage.load(record.file_path)
+    if content is None:
         raise HTTPException(status_code=404, detail="File not found.")
-    return FileResponse(full_path, filename=record.original_filename)
+    return Response(
+        content=content, media_type=record.content_type,
+        headers={"Content-Disposition": f'attachment; filename="{record.original_filename}"'},
+    )

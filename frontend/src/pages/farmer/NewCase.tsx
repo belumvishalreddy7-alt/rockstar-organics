@@ -22,15 +22,15 @@ export function NewCase() {
       {error && <div className="alert alert-error">{error}</div>}
       <form onSubmit={(e) => { e.preventDefault(); submit.mutate(); }}>
         <div className="field"><label htmlFor="title">Title</label>
-          <input id="title" required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></div>
+          <input type="text" id="title" required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></div>
         <div className="field"><label htmlFor="description">Describe the issue</label>
           <textarea id="description" required value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
         <div className="field"><label htmlFor="crop">Crop</label>
-          <input id="crop" value={form.crop} onChange={(e) => setForm({ ...form, crop: e.target.value })} /></div>
+          <input type="text" id="crop" value={form.crop} onChange={(e) => setForm({ ...form, crop: e.target.value })} /></div>
         <div className="field"><label htmlFor="district">District</label>
-          <input id="district" required value={form.district} onChange={(e) => setForm({ ...form, district: e.target.value })} /></div>
+          <input type="text" id="district" required value={form.district} onChange={(e) => setForm({ ...form, district: e.target.value })} /></div>
         <div className="field"><label htmlFor="mandal">Mandal</label>
-          <input id="mandal" value={form.mandal} onChange={(e) => setForm({ ...form, mandal: e.target.value })} /></div>
+          <input type="text" id="mandal" value={form.mandal} onChange={(e) => setForm({ ...form, mandal: e.target.value })} /></div>
         <div className="field"><label htmlFor="severity">Severity</label>
           <select id="severity" value={form.severity} onChange={(e) => setForm({ ...form, severity: e.target.value })}>
             <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="urgent">Urgent</option>

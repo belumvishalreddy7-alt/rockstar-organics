@@ -61,20 +61,20 @@ export function AgriculturePhotos() {
         {message && <p className="small">{message}</p>}
         <form onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
           <div className="field"><label htmlFor="photo-title">Title</label>
-            <input id="photo-title" required value={title} onChange={(e) => setTitle(e.target.value)} /></div>
+            <input type="text" id="photo-title" required value={title} onChange={(e) => setTitle(e.target.value)} /></div>
           <div className="field"><label htmlFor="photo-category">Category</label>
             <select id="photo-category" value={category} onChange={(e) => setCategory(e.target.value)}>
               {CATEGORIES.map((c) => <option key={c} value={c}>{c.replace(/_/g, " ")}</option>)}
             </select>
           </div>
           <div className="field"><label htmlFor="photo-alt">Alt text (accurate, accessible description)</label>
-            <input id="photo-alt" required value={altText} onChange={(e) => setAltText(e.target.value)} /></div>
+            <input type="text" id="photo-alt" required value={altText} onChange={(e) => setAltText(e.target.value)} /></div>
           <div className="field"><label htmlFor="photo-location">Location (leave blank if unverified)</label>
-            <input id="photo-location" value={location} onChange={(e) => setLocation(e.target.value)} /></div>
+            <input type="text" id="photo-location" value={location} onChange={(e) => setLocation(e.target.value)} /></div>
           <div className="field"><label htmlFor="photo-crop">Crop (leave blank if unverified)</label>
-            <input id="photo-crop" value={crop} onChange={(e) => setCrop(e.target.value)} /></div>
+            <input type="text" id="photo-crop" value={crop} onChange={(e) => setCrop(e.target.value)} /></div>
           <div className="field"><label htmlFor="photo-source">Photographer/source (leave blank if unverified)</label>
-            <input id="photo-source" value={photographerSource} onChange={(e) => setPhotographerSource(e.target.value)} /></div>
+            <input type="text" id="photo-source" value={photographerSource} onChange={(e) => setPhotographerSource(e.target.value)} /></div>
           <div className="field">
             <label><input type="checkbox" checked={usageRightsVerified} onChange={(e) => setUsageRightsVerified(e.target.checked)} /> Usage rights verified (owned by or licensed to Rockstar Organics)</label>
           </div>

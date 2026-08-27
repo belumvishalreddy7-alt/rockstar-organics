@@ -77,11 +77,11 @@ export function Register() {
           }}
         >
           <div className="field"><label htmlFor="full_name">Full name</label>
-            <input id="full_name" required value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} /></div>
+            <input type="text" id="full_name" required value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} /></div>
           <div className="field"><label htmlFor="email">Email</label>
             <input id="email" type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
           <div className="field"><label htmlFor="phone">Phone (10-digit mobile)</label>
-            <input id="phone" required value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
+            <input type="text" id="phone" required value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
           <div className="field"><label htmlFor="password">Password</label>
             <input id="password" type="password" required value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
             <p className="hint">At least 10 characters, with uppercase, lowercase, and a digit.</p></div>
@@ -151,7 +151,7 @@ export function ResetPassword() {
           >
             {error && <div className="alert alert-error">{error}</div>}
             <div className="field"><label htmlFor="token">Reset token</label>
-              <input id="token" required value={token} onChange={(e) => setToken(e.target.value)} /></div>
+              <input type="text" id="token" required value={token} onChange={(e) => setToken(e.target.value)} /></div>
             <div className="field"><label htmlFor="new_password">New password</label>
               <input id="new_password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} /></div>
             <button className="btn btn-primary" type="submit">Set new password</button>

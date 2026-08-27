@@ -46,12 +46,12 @@ export function KnowledgeManagement() {
         <div className="panel">
           <form onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
             <div className="grid cols-2">
-              <div className="field"><label htmlFor="k-title">Title</label><input id="k-title" required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></div>
-              <div className="field"><label htmlFor="k-slug">Slug</label><input id="k-slug" required value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} /></div>
-              <div className="field"><label htmlFor="k-topic">Topic</label><input id="k-topic" value={form.topic} onChange={(e) => setForm({ ...form, topic: e.target.value })} /></div>
-              <div className="field"><label htmlFor="k-crops">Crops</label><input id="k-crops" value={form.crops} onChange={(e) => setForm({ ...form, crops: e.target.value })} /></div>
+              <div className="field"><label htmlFor="k-title">Title</label><input type="text" id="k-title" required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></div>
+              <div className="field"><label htmlFor="k-slug">Slug</label><input type="text" id="k-slug" required value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} /></div>
+              <div className="field"><label htmlFor="k-topic">Topic</label><input type="text" id="k-topic" value={form.topic} onChange={(e) => setForm({ ...form, topic: e.target.value })} /></div>
+              <div className="field"><label htmlFor="k-crops">Crops</label><input type="text" id="k-crops" value={form.crops} onChange={(e) => setForm({ ...form, crops: e.target.value })} /></div>
             </div>
-            <div className="field"><label htmlFor="k-summary">Summary</label><input id="k-summary" value={form.summary} onChange={(e) => setForm({ ...form, summary: e.target.value })} /></div>
+            <div className="field"><label htmlFor="k-summary">Summary</label><input type="text" id="k-summary" value={form.summary} onChange={(e) => setForm({ ...form, summary: e.target.value })} /></div>
             <div className="field"><label htmlFor="k-body">Body</label><textarea id="k-body" required value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} /></div>
             <button className="btn btn-primary" type="submit" disabled={create.isPending}>Save draft</button>
           </form>

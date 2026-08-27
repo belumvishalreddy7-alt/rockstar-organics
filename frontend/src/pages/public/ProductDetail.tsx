@@ -88,7 +88,7 @@ export function ProductDetail() {
               {error && <div className="alert alert-error">{error}</div>}
               <div className="field">
                 <label htmlFor="reviewer_name">Your name</label>
-                <input id="reviewer_name" required value={form.reviewer_name} onChange={(e) => setForm({ ...form, reviewer_name: e.target.value })} />
+                <input type="text" id="reviewer_name" required value={form.reviewer_name} onChange={(e) => setForm({ ...form, reviewer_name: e.target.value })} />
               </div>
               <div className="field">
                 <label htmlFor="rating">Rating</label>

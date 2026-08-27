@@ -2,7 +2,7 @@
 role/portal, company certificates/documents, and the agriculture photo
 gallery. Email sending itself is exercised with EMAIL_PROVIDER_ENABLED left
 at its default (false) - see test_email_disabled_by_default - so this suite
-never makes a real network call to Resend; app/core/email.py's live
+never makes a real network call to Brevo; app/core/email.py's live
 integration is verified separately (manually, against the real API), not
 here, matching the project's "never claim a test passed unless executed"
 rule for things this environment cannot safely automate.

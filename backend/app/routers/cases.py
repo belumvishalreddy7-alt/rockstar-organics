@@ -7,7 +7,7 @@ from app.core.audit import record_audit
 from app.core.database import get_db
 from app.core.deps import require_roles, require_user
 from app.core.notify import notify
-from app.core.permissions import CASE_MANAGERS, ROLE_DEALER, ROLE_FARMER
+from app.core.permissions import CASE_MANAGERS, ROLE_DEALER, ROLE_FARMER, ROLE_FIELD_OFFICER
 from app.core.references import generate_reference
 from app.models.models import CaseMessage, DealerProfile, FarmerSupportCase, User
 from app.schemas.schemas import CaseAssignRequest, CaseMessageCreate, CaseStatusChange, SupportCaseCreate
@@ -64,13 +64,21 @@ def _get_case_for_viewer(db: Session, case_id: str, user: User) -> FarmerSupport
     case = db.get(FarmerSupportCase, case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found.")
-    if user.role == ROLE_FARMER and case.farmer_id != user.id:
-        raise HTTPException(status_code=403, detail="You do not have access to this case.")
+    if user.role in CASE_MANAGERS:
+        return case
+    if user.role == ROLE_FARMER:
+        if case.farmer_id != user.id:
+            raise HTTPException(status_code=403, detail="You do not have access to this case.")
+        return case
     if user.role == ROLE_DEALER:
         profile = db.query(DealerProfile).filter(DealerProfile.user_id == user.id).first()
         if not profile or case.assigned_dealer_id != profile.id:
             raise HTTPException(status_code=403, detail="You do not have access to this case.")
-    return case
+        return case
+    # Any other role (content_manager, distributor, etc.) has no business
+    # relationship to farmer support cases at all - deny by default rather
+    # than falling through unrestricted.
+    raise HTTPException(status_code=403, detail="You do not have access to this case.")
 
 
 @router.get("/{case_id}")
@@ -105,20 +113,27 @@ def assign_case(case_id: str, payload: CaseAssignRequest, user: User = Depends(r
         raise HTTPException(status_code=404, detail="Case not found.")
     parts = []
     if payload.dealer_id is not None:
+        dealer = db.get(DealerProfile, payload.dealer_id)
+        if not dealer:
+            raise HTTPException(status_code=404, detail="Dealer not found.")
         case.assigned_dealer_id = payload.dealer_id
         case.status = "assigned_to_dealer"
         parts.append("dealer")
-        dealer = db.get(DealerProfile, payload.dealer_id)
-        if dealer:
-            notify(db, recipient_id=dealer.user_id, type="case_assigned", title="New farmer case assigned",
-                   message=f"Case {case.reference_number} has been assigned to you.", related_entity_type="farmer_support_case", related_entity_id=case.id)
+        notify(db, recipient_id=dealer.user_id, type="case_assigned", title="New farmer case assigned",
+               message=f"Case {case.reference_number} has been assigned to you.", related_entity_type="farmer_support_case", related_entity_id=case.id)
     if payload.field_officer_id is not None:
+        field_officer = db.get(User, payload.field_officer_id)
+        if not field_officer or field_officer.role != ROLE_FIELD_OFFICER:
+            raise HTTPException(status_code=404, detail="Field officer not found.")
         case.assigned_field_officer_id = payload.field_officer_id
         case.status = "assigned_to_field_officer"
         parts.append("field officer")
         notify(db, recipient_id=payload.field_officer_id, type="case_assigned", title="New farmer case assigned",
                message=f"Case {case.reference_number} has been assigned to you.", related_entity_type="farmer_support_case", related_entity_id=case.id)
     if payload.staff_id is not None:
+        staff_member = db.get(User, payload.staff_id)
+        if not staff_member:
+            raise HTTPException(status_code=404, detail="Staff member not found.")
         case.assigned_staff_id = payload.staff_id
         parts.append("staff member")
 

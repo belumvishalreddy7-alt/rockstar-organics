@@ -59,7 +59,7 @@ export function CompanyDocuments() {
         {message && <p className="small">{message}</p>}
         <form onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
           <div className="field"><label htmlFor="doc-title">Title</label>
-            <input id="doc-title" required value={title} onChange={(e) => setTitle(e.target.value)} /></div>
+            <input type="text" id="doc-title" required value={title} onChange={(e) => setTitle(e.target.value)} /></div>
           <div className="field"><label htmlFor="doc-type">Document type</label>
             <select id="doc-type" value={documentType} onChange={(e) => setDocumentType(e.target.value)}>
               {DOCUMENT_TYPES.map((t) => <option key={t} value={t}>{t.replace(/_/g, " ")}</option>)}

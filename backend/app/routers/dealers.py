@@ -15,7 +15,7 @@ from app.core.rate_limit import rate_limiter
 from app.core.references import generate_reference
 from app.core.security import generate_token, hash_password
 from app.models.models import DealerApplication, DealerProfile, DealerServiceArea, DealerProductAvailability, Product, User
-from app.schemas.schemas import DealerApplicationCreate, DealerApplicationDecision
+from app.schemas.schemas import DealerApplicationCreate, DealerApplicationDecision, DealerProfileUpdate
 
 router = APIRouter(prefix="/api/v1/dealers", tags=["dealers"])
 settings = get_settings()
@@ -157,13 +157,12 @@ def my_dealer_profile(user: User = Depends(require_roles(ROLE_DEALER)), db: Sess
 
 
 @router.put("/me/profile")
-def update_my_dealer_profile(payload: dict, user: User = Depends(require_roles(ROLE_DEALER)), db: Session = Depends(get_db)):
+def update_my_dealer_profile(payload: DealerProfileUpdate, user: User = Depends(require_roles(ROLE_DEALER)), db: Session = Depends(get_db)):
     profile = db.query(DealerProfile).filter(DealerProfile.user_id == user.id).first()
     if not profile:
         raise HTTPException(status_code=404, detail="Dealer profile not found.")
-    for field in ["directory_opt_in", "farmer_case_opt_in", "show_public_phone", "show_public_email", "public_phone", "public_email", "address"]:
-        if field in payload:
-            setattr(profile, field, payload[field])
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(profile, field, value)
     profile.last_activity_at = dt.datetime.utcnow()
     record_audit(db, actor_id=user.id, action="dealer.profile_update", entity_type="dealer_profile", entity_id=profile.id, summary="Dealer updated their profile")
     db.commit()
@@ -179,6 +178,8 @@ def set_availability(product_id: str, status: str, notes: str | None = None,
     if not product or product.status != "published":
         raise HTTPException(status_code=400, detail="Only published products may have availability declared.")
     profile = db.query(DealerProfile).filter(DealerProfile.user_id == user.id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Dealer profile not found.")
     record = db.query(DealerProductAvailability).filter(DealerProductAvailability.dealer_id == profile.id, DealerProductAvailability.product_id == product_id).first()
     if not record:
         record = DealerProductAvailability(dealer_id=profile.id, product_id=product_id)

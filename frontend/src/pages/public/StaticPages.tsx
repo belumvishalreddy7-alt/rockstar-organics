@@ -140,13 +140,13 @@ export function Contact() {
                 </select>
               </div>
               <div className="field"><label htmlFor="name">Your name</label>
-                <input id="name" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+                <input type="text" id="name" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
               <div className="field"><label htmlFor="email">Email (optional)</label>
                 <input id="email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
               <div className="field"><label htmlFor="phone">Phone (optional)</label>
-                <input id="phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
+                <input type="text" id="phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
               <div className="field"><label htmlFor="district">District (optional)</label>
-                <input id="district" value={form.district} onChange={(e) => setForm({ ...form, district: e.target.value })} /></div>
+                <input type="text" id="district" value={form.district} onChange={(e) => setForm({ ...form, district: e.target.value })} /></div>
               <div className="field"><label htmlFor="message">Message</label>
                 <textarea id="message" required value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} /></div>
               <div className="field">

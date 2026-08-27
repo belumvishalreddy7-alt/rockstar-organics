@@ -124,6 +124,10 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   font-family: var(--font-sans); font-size: 0.92rem; font-weight: 600;
   padding: 9px 16px; border-radius: var(--radius-sm); border: 1px solid transparent;
   cursor: pointer; text-decoration: none; line-height: 1;
+  /* Comfortable tap target on touch devices (WCAG 2.5.5 / platform HIG
+     guidance is ~44px) - .btn-sm below deliberately opts out for dense
+     desktop-oriented admin tables. */
+  min-height: 44px;
 }
 .btn-primary { background: var(--color-green-700); color: #fff; }
 .btn-primary:hover { background: var(--color-green-600); }
@@ -143,8 +147,12 @@ input[type="text"], input[type="email"], input[type="password"], input[type="tel
 input[type="date"], input[type="datetime-local"], textarea, select {
   width: 100%; padding: 9px 11px; border: 1px solid var(--color-border); border-radius: var(--radius-sm);
   font-family: var(--font-sans); font-size: 0.95rem; background: #fff; color: var(--color-text);
+  min-height: 44px; box-sizing: border-box;
 }
 textarea { resize: vertical; min-height: 90px; }
+input[type="checkbox"], input[type="radio"] {
+  width: 18px; height: 18px; min-height: 0;
+}
 fieldset { border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 14px; }
 legend { font-weight: 600; padding: 0 6px; }
 
@@ -194,12 +202,12 @@ legend { font-weight: 600; padding: 0 6px; }
 .timeline .private-tag { color: var(--color-accent); font-weight: 700; font-size: 0.72rem; text-transform: uppercase; }
 
 /* Mobile nav drawer */
-.nav-toggle { display: none; background: transparent; border: 1px solid rgba(255,255,255,0.4); color: #fff; padding: 6px 10px; border-radius: var(--radius-sm); }
+.nav-toggle { display: none; align-items: center; justify-content: center; background: transparent; border: 1px solid rgba(255,255,255,0.4); color: #fff; padding: 6px 14px; min-height: 44px; border-radius: var(--radius-sm); }
 @media (max-width: 780px) {
   .nav-toggle { display: inline-flex; }
   .main-nav { display: none; width: 100%; flex-direction: column; align-items: stretch; }
   .main-nav.open { display: flex; }
-  .main-nav a, .main-nav button.nav-link { width: 100%; text-align: left; }
+  .main-nav a, .main-nav button.nav-link { width: 100%; text-align: left; padding: 12px 10px; min-height: 44px; box-sizing: border-box; display: flex; align-items: center; }
 }
 
 .dashboard-layout { display: grid; grid-template-columns: 220px 1fr; gap: 24px; align-items: start; }

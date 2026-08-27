@@ -12,6 +12,7 @@ from app.core.notify import notify
 from app.core.permissions import ROLE_ADMIN, ROLE_SUPER_ADMIN, STAFF_ROLES
 from app.core.security import hash_password
 from app.models.models import User
+from app.schemas.schemas import StaffInviteRequest
 
 router = APIRouter(prefix="/api/v1/staff", tags=["staff"])
 
@@ -23,7 +24,8 @@ def list_staff(user: User = Depends(require_roles(ROLE_SUPER_ADMIN, ROLE_ADMIN))
 
 
 @router.post("/invite")
-def invite_staff(email: str, full_name: str, role: str, user: User = Depends(require_roles(ROLE_SUPER_ADMIN, ROLE_ADMIN)), db: Session = Depends(get_db)):
+def invite_staff(payload: StaffInviteRequest, user: User = Depends(require_roles(ROLE_SUPER_ADMIN, ROLE_ADMIN)), db: Session = Depends(get_db)):
+    email, full_name, role = payload.email, payload.full_name, payload.role
     if role not in STAFF_ROLES:
         raise HTTPException(status_code=400, detail="Invalid staff role.")
     if role == "super_admin" and user.role != ROLE_SUPER_ADMIN:

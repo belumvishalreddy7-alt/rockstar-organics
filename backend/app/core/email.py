@@ -1,18 +1,17 @@
-"""Real transactional email delivery via the Resend API.
+"""Real transactional email delivery via the Brevo API.
 
 This is a genuine HTTP integration, not a mock: when EMAIL_PROVIDER_ENABLED
-is true and RESEND_API_KEY is set, `send_email` makes a real POST to
-https://api.resend.com/emails and returns Resend's own message id and
+is true and BREVO_API_KEY is set, `send_email` makes a real POST to
+https://api.brevo.com/v3/smtp/email and returns Brevo's own message id and
 delivery outcome. When the provider is disabled (the default), nothing is
 sent and the caller is told so explicitly - the app never claims an email
 was sent when it wasn't, matching the project's standing rule against fake
 "sent" confirmations (see docs/KNOWN_LIMITATIONS.md "External providers").
 
-Resend note: an API key tied to an account with no verified sending
-domain can only deliver to the account's own registered email address
-(Resend's sandbox restriction) using the shared onboarding@resend.com
-sender. Verify a domain in the Resend dashboard and set EMAIL_FROM_ADDRESS
-to an address on it to send to arbitrary recipients.
+Brevo note: EMAIL_FROM_EMAIL must be verified as a sender in the Brevo
+dashboard (Settings -> Senders) before this can send anything - unlike some
+providers, Brevo has no shared sandbox sender to fall back to, so a send
+attempt from an unverified address fails outright with a 4xx.
 """
 import logging
 
@@ -23,7 +22,7 @@ from app.core.config import get_settings
 logger = logging.getLogger("rockstar_organics")
 settings = get_settings()
 
-RESEND_API_URL = "https://api.resend.com/emails"
+BREVO_API_URL = "https://api.brevo.com/v3/smtp/email"
 
 
 class EmailResult:
@@ -36,26 +35,27 @@ class EmailResult:
 def send_email(*, to: str, subject: str, html: str, text: str) -> EmailResult:
     """Sends one transactional email. Returns an EmailResult describing what
     actually happened - never raises for a provider-side failure (a bad
-    recipient, an unverified domain, etc.), so a failed email never breaks
+    recipient, an unverified sender, etc.), so a failed email never breaks
     the request that triggered it (registration, password reset, ...); the
     caller decides how to surface EmailResult.sent == False."""
-    if not settings.EMAIL_PROVIDER_ENABLED or not settings.RESEND_API_KEY:
+    if not settings.EMAIL_PROVIDER_ENABLED or not settings.BREVO_API_KEY or not settings.EMAIL_FROM_EMAIL:
         logger.info('{"message": "email provider disabled - not sending", "to": "%s", "subject": "%s"}', to, subject)
         return EmailResult(sent=False, error="Email provider is not configured.")
 
     try:
         response = httpx.post(
-            RESEND_API_URL,
+            BREVO_API_URL,
             headers={
-                "Authorization": f"Bearer {settings.RESEND_API_KEY}",
+                "api-key": settings.BREVO_API_KEY,
                 "Content-Type": "application/json",
+                "Accept": "application/json",
             },
             json={
-                "from": settings.EMAIL_FROM_ADDRESS,
-                "to": [to],
+                "sender": {"name": settings.EMAIL_FROM_NAME, "email": settings.EMAIL_FROM_EMAIL},
+                "to": [{"email": to}],
                 "subject": subject,
-                "html": html,
-                "text": text,
+                "htmlContent": html,
+                "textContent": text,
             },
             timeout=10.0,
         )
@@ -64,10 +64,10 @@ def send_email(*, to: str, subject: str, html: str, text: str) -> EmailResult:
                 '{"message": "email send failed", "to": "%s", "status": %s, "body": %s}',
                 to, response.status_code, response.text[:500],
             )
-            return EmailResult(sent=False, error=f"Resend returned {response.status_code}: {response.text[:300]}")
+            return EmailResult(sent=False, error=f"Brevo returned {response.status_code}: {response.text[:300]}")
         data = response.json()
-        logger.info('{"message": "email sent", "to": "%s", "provider_id": "%s"}', to, data.get("id"))
-        return EmailResult(sent=True, provider_message_id=data.get("id"))
+        logger.info('{"message": "email sent", "to": "%s", "provider_id": "%s"}', to, data.get("messageId"))
+        return EmailResult(sent=True, provider_message_id=data.get("messageId"))
     except httpx.HTTPError as exc:
         logger.warning('{"message": "email send raised an error", "to": "%s", "error": "%s"}', to, exc)
         return EmailResult(sent=False, error=str(exc))

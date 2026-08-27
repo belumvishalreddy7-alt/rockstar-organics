@@ -22,7 +22,7 @@ export function DealerDirectory() {
       <p className="muted">Only active, approved dealers who have opted into the public directory are listed here.</p>
       <div className="field" style={{ maxWidth: 320 }}>
         <label htmlFor="district">District</label>
-        <input id="district" value={district} onChange={(e) => setDistrict(e.target.value)} placeholder="e.g. Hyderabad" />
+        <input type="text" id="district" value={district} onChange={(e) => setDistrict(e.target.value)} placeholder="e.g. Hyderabad" />
       </div>
 
       {isLoading && <div className="loading-state">Loading dealers...</div>}

@@ -467,3 +467,54 @@ class AgriculturePhotoCreate(BaseModel):
         if v not in AGRICULTURE_PHOTO_CATEGORIES:
             raise ValueError(f"Category must be one of: {', '.join(sorted(AGRICULTURE_PHOTO_CATEGORIES))}.")
         return v
+
+
+# ---------------------------------------------------------------------------
+# Dealer / distributor self-service profile updates
+# ---------------------------------------------------------------------------
+# All fields optional so a partial update (only the fields the client sent)
+# is possible via `.model_dump(exclude_unset=True)` in the router - but every
+# field that does arrive is still validated and length-capped, unlike the
+# raw `dict` these replaced.
+
+
+class DealerProfileUpdate(BaseModel):
+    directory_opt_in: bool | None = None
+    farmer_case_opt_in: bool | None = None
+    show_public_phone: bool | None = None
+    show_public_email: bool | None = None
+    public_phone: str | None = Field(default=None, max_length=20)
+    public_email: EmailStr | None = None
+    address: str | None = Field(default=None, max_length=2000)
+
+    @field_validator("public_phone")
+    @classmethod
+    def valid_public_phone(cls, v):
+        if v and not PHONE_RE.match(v):
+            raise ValueError("Enter a valid 10-digit Indian mobile number.")
+        return v
+
+
+class DistributorProfileUpdate(BaseModel):
+    territory: str | None = Field(default=None, min_length=1, max_length=255)
+    public_phone: str | None = Field(default=None, max_length=20)
+    public_email: EmailStr | None = None
+    address: str | None = Field(default=None, max_length=2000)
+
+    @field_validator("public_phone")
+    @classmethod
+    def valid_public_phone(cls, v):
+        if v and not PHONE_RE.match(v):
+            raise ValueError("Enter a valid 10-digit Indian mobile number.")
+        return v
+
+
+# ---------------------------------------------------------------------------
+# Staff invitations
+# ---------------------------------------------------------------------------
+
+
+class StaffInviteRequest(BaseModel):
+    email: EmailStr
+    full_name: str = Field(min_length=1, max_length=150)
+    role: str = Field(min_length=1, max_length=30)

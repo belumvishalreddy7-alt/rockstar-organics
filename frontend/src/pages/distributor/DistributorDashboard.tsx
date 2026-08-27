@@ -36,11 +36,11 @@ export function DistributorDashboard() {
         <h2>Profile</h2>
         {saved && <div className="alert alert-success">Saved.</div>}
         <div className="field"><label htmlFor="territory">Territory</label>
-          <input id="territory" value={data.territory} onChange={(e) => updateProfile.mutate({ territory: e.target.value })} /></div>
+          <input type="text" id="territory" value={data.territory} onChange={(e) => updateProfile.mutate({ territory: e.target.value })} /></div>
         <div className="field"><label htmlFor="public_phone">Public phone (optional)</label>
-          <input id="public_phone" value={data.public_phone || ""} onChange={(e) => updateProfile.mutate({ public_phone: e.target.value })} /></div>
+          <input type="text" id="public_phone" value={data.public_phone || ""} onChange={(e) => updateProfile.mutate({ public_phone: e.target.value })} /></div>
         <div className="field"><label htmlFor="public_email">Public email (optional)</label>
-          <input id="public_email" value={data.public_email || ""} onChange={(e) => updateProfile.mutate({ public_email: e.target.value })} /></div>
+          <input type="text" id="public_email" value={data.public_email || ""} onChange={(e) => updateProfile.mutate({ public_email: e.target.value })} /></div>
       </div>
 
       <div className="panel">

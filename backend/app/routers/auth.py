@@ -19,6 +19,7 @@ from app.core.security import (
     hash_token,
     password_strength_errors,
     verify_password,
+    verify_password_or_dummy,
 )
 from app.models.models import FarmerProfile, OtpCode, PasswordResetToken, User
 from app.schemas.schemas import (
@@ -139,11 +140,10 @@ def signup(payload: SignupRequest, request: Request, db: Session = Depends(get_d
 
     response = {"ok": True, "message": "A verification code has been sent to your email.", "email_sent": email_result.sent}
     # DEV_EXPOSE_OTP is its own explicit gate, independent of ENVIRONMENT -
-    # see Settings.DEV_EXPOSE_OTP's docstring for why this deployment
-    # currently has it on in production (Resend has no verified sending
-    # domain yet, so real delivery only reaches the provider account's own
-    # address; this is the disclosed, temporary fallback until a domain is
-    # verified).
+    # see Settings.DEV_EXPOSE_OTP's docstring. Unlike some providers, Brevo
+    # has no sandbox restriction once EMAIL_FROM_EMAIL is a verified sender,
+    # so DEV_EXPOSE_OTP should be turned off in production as soon as that
+    # verification is confirmed working end-to-end.
     if settings.DEV_EXPOSE_OTP:
         response["dev_otp_code"] = code
     return response
@@ -206,7 +206,8 @@ def login(payload: LoginRequest, request: Request, response: Response, db: Sessi
         raise HTTPException(status_code=429, detail="Too many login attempts. Please try again later.")
 
     user = db.query(User).filter(User.email == payload.email.lower()).first()
-    if not user or not verify_password(payload.password, user.password_hash):
+    password_ok = verify_password_or_dummy(payload.password, user.password_hash if user else None)
+    if not user or not password_ok:
         raise HTTPException(status_code=401, detail=GENERIC_LOGIN_ERROR)
     if user.status != "active":
         raise HTTPException(status_code=401, detail=GENERIC_LOGIN_ERROR)
@@ -311,7 +312,17 @@ def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db))
     user.password_hash = hash_password(payload.new_password)
     user.must_change_password = False
     user.password_changed_at = dt.datetime.utcnow()
-    reset.used_at = dt.datetime.utcnow()
+    now = dt.datetime.utcnow()
+    reset.used_at = now
+    # Invalidate every other outstanding reset token for this user too (e.g.
+    # from an earlier forgot-password request) - otherwise a stale, still-
+    # unexpired token can reset the password again after this one already
+    # completed.
+    db.query(PasswordResetToken).filter(
+        PasswordResetToken.user_id == user.id,
+        PasswordResetToken.id != reset.id,
+        PasswordResetToken.used_at.is_(None),
+    ).update({"used_at": now})
     record_audit(db, actor_id=user.id, action="user.password_reset_completed", entity_type="user", entity_id=user.id,
                  summary="Password reset completed")
     db.commit()

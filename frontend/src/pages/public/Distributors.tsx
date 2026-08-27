@@ -59,15 +59,15 @@ export function Distributors() {
             <form onSubmit={(e) => { e.preventDefault(); submit.mutate(); }}>
               {error && <div className="alert alert-error">{error}</div>}
               <div className="field"><label htmlFor="contact_person">Contact person</label>
-                <input id="contact_person" required value={form.contact_person} onChange={(e) => setForm({ ...form, contact_person: e.target.value })} /></div>
+                <input type="text" id="contact_person" required value={form.contact_person} onChange={(e) => setForm({ ...form, contact_person: e.target.value })} /></div>
               <div className="field"><label htmlFor="business_name">Business name</label>
-                <input id="business_name" required value={form.business_name} onChange={(e) => setForm({ ...form, business_name: e.target.value })} /></div>
+                <input type="text" id="business_name" required value={form.business_name} onChange={(e) => setForm({ ...form, business_name: e.target.value })} /></div>
               <div className="field"><label htmlFor="email">Email</label>
                 <input id="email" type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
               <div className="field"><label htmlFor="phone">Phone (10-digit mobile)</label>
-                <input id="phone" required value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
+                <input type="text" id="phone" required value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
               <div className="field"><label htmlFor="territory">Requested territory</label>
-                <input id="territory" required value={form.territory} onChange={(e) => setForm({ ...form, territory: e.target.value })} /></div>
+                <input type="text" id="territory" required value={form.territory} onChange={(e) => setForm({ ...form, territory: e.target.value })} /></div>
               <div className="field"><label htmlFor="years_in_business">Years in business (optional)</label>
                 <input id="years_in_business" type="number" min="0" value={form.years_in_business} onChange={(e) => setForm({ ...form, years_in_business: e.target.value })} /></div>
               <div className="field"><label htmlFor="warehouse_capacity_notes">Warehouse capacity notes (optional)</label>

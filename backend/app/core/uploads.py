@@ -13,6 +13,7 @@ from pathlib import Path
 
 from fastapi import HTTPException, UploadFile
 
+from app.core import storage
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -38,11 +39,6 @@ def _allowed_types(allow_pdf: bool) -> dict[str, tuple[bytes, ...]]:
     return types
 
 
-def _ensure_dirs() -> None:
-    Path(settings.UPLOAD_ROOT, settings.PUBLIC_UPLOAD_SUBDIR).mkdir(parents=True, exist_ok=True)
-    Path(settings.UPLOAD_ROOT, settings.PRIVATE_UPLOAD_SUBDIR).mkdir(parents=True, exist_ok=True)
-
-
 def validate_and_store(
     file: UploadFile,
     *,
@@ -51,9 +47,10 @@ def validate_and_store(
     max_size_bytes: int,
 ) -> tuple[str, str, str, int]:
     """Returns (relative_file_path, original_filename, content_type, size_bytes).
-    Raises HTTPException(400) on any validation failure."""
-    _ensure_dirs()
-
+    Raises HTTPException(400) on any validation failure. Persistence itself
+    goes through app/core/storage.py (local disk or Supabase Storage,
+    depending on configuration) - this function only ever deals in
+    validated bytes and a relative path."""
     original_name = file.filename or "upload"
     ext = Path(original_name).suffix.lower()
     allowed_ext = DOCUMENT_EXTENSIONS if allow_pdf else IMAGE_EXTENSIONS
@@ -77,10 +74,7 @@ def validate_and_store(
 
     safe_name = f"{uuid.uuid4().hex}{ext}"
     subdir = settings.PUBLIC_UPLOAD_SUBDIR if is_public else settings.PRIVATE_UPLOAD_SUBDIR
-    dest_dir = Path(settings.UPLOAD_ROOT, subdir)
-    dest_path = dest_dir / safe_name
-    with open(dest_path, "wb") as f:
-        f.write(content)
-
     relative_path = f"{subdir}/{safe_name}"
+    storage.save(relative_path, content, declared_type)
+
     return relative_path, os.path.basename(original_name)[:255], declared_type, len(content)

@@ -62,20 +62,18 @@ or a mockup:
   script refuses to run when `ENVIRONMENT=production`, and
   `--remove` deletes them again.
 - **Real (not mocked) transactional email** — `app/core/email.py` makes
-  genuine HTTP calls to the Resend API for OTP codes, password resets,
-  welcome emails, and dealer/distributor approval credentials. This was
-  verified live, not simulated: a real Resend API key was created via
-  the Resend account connected during this build, and a live send was
-  attempted against Resend's production API. It returned Resend's own
-  `403 domain_not_verified` error, because the connected Resend account
-  has no verified sending domain - see `docs/SECURITY.md`'s "Email
-  delivery" section for the full detail and what verifying a domain
-  would unlock (no code changes needed). Until a domain is verified,
-  `EMAIL_PROVIDER_ENABLED` stays `false` (the default), and OTP/reset
-  flows fall back to returning the code/token directly in the API
-  response in development (`DEV_EXPOSE_OTP`/`DEV_EXPOSE_RESET_TOKEN`) -
-  which is how this pass's own automated tests and live smoke-testing
-  exercised those flows.
+  genuine HTTP calls to the Brevo API for OTP codes, password resets,
+  welcome emails, and dealer/distributor approval credentials. Brevo was
+  chosen (over a domain-verification-based provider) specifically because
+  this deployment has no custom domain: a single verified sender address
+  is enough to deliver to arbitrary recipients - see `docs/SECURITY.md`'s
+  "Email delivery" section for exactly what "verified sender" requires and
+  the current status. Until `EMAIL_PROVIDER_ENABLED=true`, `BREVO_API_KEY`,
+  and a verified `EMAIL_FROM_EMAIL` are all set, sends are skipped (not
+  faked), and OTP/reset flows fall back to returning the code/token
+  directly in the API response in development
+  (`DEV_EXPOSE_OTP`/`DEV_EXPOSE_RESET_TOKEN`) - which is how this pass's
+  own automated tests exercised those flows.
 
 Test coverage: `backend/tests/test_real_world_content.py` (7 tests) covers
 OTP signup + verification + duplicate-email rejection + wrong-code

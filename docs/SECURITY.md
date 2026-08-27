@@ -89,35 +89,25 @@
   Sentry DSN/auth token are never committed; the Terraform and Kubernetes
   configs under `infra/` show where to wire them to a real secrets store.
 
-## Email delivery (Resend)
+## Email delivery (Brevo)
 
-`app/core/email.py` is a real HTTP integration with the Resend API
-(`https://api.resend.com/emails`), not a mock: with `EMAIL_PROVIDER_ENABLED=true`
-and a real `RESEND_API_KEY` set, signup OTP codes, password-reset links,
-welcome emails, and dealer/distributor approval credentials are sent
-through an actual API call, and the response's real success/failure is
-what the caller sees (`EmailResult.sent`) - the app never claims an email
-was sent when the API call failed.
+`app/core/email.py` is a real HTTP integration with the Brevo API
+(`https://api.brevo.com/v3/smtp/email`), not a mock: with
+`EMAIL_PROVIDER_ENABLED=true`, a real `BREVO_API_KEY`, and `EMAIL_FROM_EMAIL`
+set to a sender verified in the Brevo dashboard (Settings -> Senders),
+signup OTP codes, password-reset links, welcome emails, and
+dealer/distributor approval credentials are sent through an actual API
+call, and the response's real success/failure is what the caller sees
+(`EmailResult.sent`) - the app never claims an email was sent when the API
+call failed.
 
-**What was verified during this build**, live, against the real Resend
-API (not simulated): a Resend API key was created for this project via the
-Resend account connected to this session, and a live send was attempted
-against it. Resend rejected the send with its own `403 domain_not_verified`
-error, because the connected account has no verified sending domain yet -
-Resend restricts every account to the shared `onboarding@resend.com`
-sender or a verified domain's addresses, and this account has neither
-verified. This is a Resend account configuration state, not a code
-defect: `app/core/email.py`'s request/response handling, error surfacing,
-and the OTP/password-reset/approval flows that call it are all real and
-were exercised end-to-end in tests and in a live backend (see
-`docs/TEST_REPORT.md`) - the only missing piece is a verified domain on
-the Resend side. Once a domain is verified at
-https://resend.com/domains and `EMAIL_FROM_ADDRESS` is set to an address
-on it, mail will start delivering with no code changes.
-
-Until a domain is verified, `EMAIL_PROVIDER_ENABLED` should stay `false`
-(the default) so the app doesn't pointlessly attempt sends that Resend
-will reject - the OTP/reset flows fall back to returning the code/token
+Unlike some providers, Brevo has no shared sandbox sender and no
+domain-verification requirement to send at all - a single verified sender
+address is enough to deliver to arbitrary recipients, which is why this
+was chosen for a deployment with no custom domain. `EMAIL_FROM_EMAIL` must
+still be verified (click the confirmation link Brevo emails to that
+address) before `EMAIL_PROVIDER_ENABLED=true` will actually deliver
+anything; until then, sends fail with a 4xx that `EmailResult.error`
+surfaces, and the OTP/reset flows fall back to returning the code/token
 directly in the API response when `DEV_EXPOSE_OTP`/`DEV_EXPOSE_RESET_TOKEN`
-are true, which is how this build's own tests and manual verification
-exercised those flows without live email.
+are true.

@@ -41,6 +41,22 @@ def dashboard_metrics(user: User = Depends(require_roles(ROLE_ADMIN, ROLE_SUPER_
     }
 
 
+_FORMULA_LEAD_CHARS = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_safe(value) -> object:
+    """Neutralizes CSV/formula injection: a cell that starts with a
+    formula-triggering character (=, +, -, @) is opened by Excel/Sheets as
+    a live formula, not text - a value like "=HYPERLINK(...)" coming from
+    user-submitted free text (business_name, title, ...) would execute on
+    whichever staff member's machine opens the exported file. Prefixing
+    with a single quote forces those tools to treat it as a literal
+    string; it's a no-op for every other value."""
+    if isinstance(value, str) and value.startswith(_FORMULA_LEAD_CHARS):
+        return "'" + value
+    return value
+
+
 @router.get("/export/{report_key}")
 def export_csv(report_key: str, user: User = Depends(require_roles(ROLE_ADMIN, ROLE_SUPER_ADMIN)), db: Session = Depends(get_db)):
     if report_key not in EXPORTABLE:
@@ -51,7 +67,7 @@ def export_csv(report_key: str, user: User = Depends(require_roles(ROLE_ADMIN, R
     writer = csv.writer(buf)
     writer.writerow(columns)
     for r in rows:
-        writer.writerow([getattr(r, c) for c in columns])
+        writer.writerow([_csv_safe(getattr(r, c)) for c in columns])
     record_audit(db, actor_id=user.id, action="report.export", entity_type=report_key, entity_id=None,
                  summary=f"Exported {report_key} CSV ({len(rows)} rows)")
     db.commit()
