@@ -135,9 +135,14 @@ def test_security_headers_present(client):
 
 
 def test_role_restriction_on_staff_only_endpoints(client, approved_dealer):
+    """A dealer may submit a product listing (see test_products.py's
+    dealer tests, added 2026-08-28 when this was deliberately opened up),
+    but category management stays staff-only - a dealer choosing a
+    category for their own listing is not the same as a dealer being able
+    to restructure the catalogue's taxonomy."""
     _, email, password, _ = approved_dealer
     _login(client, email, password)
-    r = client.post("/api/v1/products", json={"sku": "X", "name": "X", "slug": "x"})
+    r = client.post("/api/v1/categories", json={"name": "X", "slug": "x"})
     assert r.status_code == 403
 
 

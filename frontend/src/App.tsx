@@ -22,7 +22,8 @@ import { ChangePassword } from "./pages/public/ChangePassword";
 import { FarmerDashboardLayout, FarmerCaseList, FarmerVisitList } from "./pages/farmer/FarmerDashboard";
 import { NewCase } from "./pages/farmer/NewCase";
 import { CaseDetail } from "./pages/farmer/CaseDetail";
-import { DealerDashboard } from "./pages/dealer/DealerDashboard";
+import { DealerDashboard, DealerLayout } from "./pages/dealer/DealerDashboard";
+import { DealerProducts } from "./pages/dealer/DealerProducts";
 import { DistributorDashboard } from "./pages/distributor/DistributorDashboard";
 import { StaffDashboardLayout } from "./pages/staff/StaffDashboard";
 import { ProductManagement } from "./pages/staff/ProductManagement";
@@ -111,10 +112,13 @@ export default function App() {
             path="/dealer"
             element={
               <ProtectedRoute roles={["dealer"]}>
-                <DealerDashboard />
+                <DealerLayout />
               </ProtectedRoute>
             }
-          />
+          >
+            <Route index element={<DealerDashboard />} />
+            <Route path="products" element={<DealerProducts />} />
+          </Route>
 
           <Route
             path="/distributor"

@@ -20,7 +20,7 @@ from app.core.audit import record_audit
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_roles, require_user
-from app.core.permissions import CASE_MANAGERS, CONTENT_VERIFIERS, DEALER_MANAGERS, PRODUCT_MANAGERS, ROLE_DEALER, ROLE_FARMER
+from app.core.permissions import CASE_MANAGERS, CONTENT_VERIFIERS, DEALER_MANAGERS, PRODUCT_CONTRIBUTORS, PRODUCT_MANAGERS, ROLE_DEALER, ROLE_FARMER
 from app.core.uploads import validate_and_store
 from app.models.models import AgriculturePhoto, CompanyDocument, DealerProfile, FarmerSupportCase, MediaRecord, Product, ProductImage, User
 
@@ -30,11 +30,13 @@ settings = get_settings()
 
 @router.post("/products/{product_id}/images")
 def upload_product_image(product_id: str, file: UploadFile, alt_text: str = "",
-                          user: User = Depends(require_roles(*PRODUCT_MANAGERS, "super_admin")),
+                          user: User = Depends(require_roles(*PRODUCT_CONTRIBUTORS)),
                           db: Session = Depends(get_db)):
     product = db.get(Product, product_id)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found.")
+    if user.role == ROLE_DEALER and (product.created_by_id != user.id or product.status != "draft"):
+        raise HTTPException(status_code=403, detail="You can only add images to your own draft listings.")
     if not alt_text.strip():
         raise HTTPException(status_code=400, detail="Alt text is required for product images.")
 

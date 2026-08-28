@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.audit import record_audit
 from app.core.database import get_db
 from app.core.deps import require_roles, require_user
-from app.core.permissions import PRODUCT_MANAGERS
+from app.core.permissions import PRODUCT_CONTRIBUTORS, PRODUCT_MANAGERS, ROLE_DEALER
 from app.models.models import Product, ProductReview, User
 from app.schemas.schemas import ProductCreate, ProductStatusChange, ProductUpdate
 
@@ -114,9 +114,15 @@ def public_product_detail(slug: str, db: Session = Depends(get_db)):
 
 @router.get("")
 def admin_list_products(status: str | None = None, page: int = 1, page_size: int = 20,
-                         user: User = Depends(require_roles(*PRODUCT_MANAGERS, "super_admin")),
+                         user: User = Depends(require_roles(*PRODUCT_CONTRIBUTORS)),
                          db: Session = Depends(get_db)):
     query = db.query(Product).options(joinedload(Product.images))
+    # A dealer only ever sees their own submitted listings, never other
+    # dealers' or staff-created products - PRODUCT_CONTRIBUTORS lets a
+    # dealer call this endpoint at all, but it must not become a way to
+    # browse everyone else's unpublished drafts.
+    if user.role == ROLE_DEALER:
+        query = query.filter(Product.created_by_id == user.id)
     if status:
         query = query.filter(Product.status == status)
     total = query.count()
@@ -126,7 +132,7 @@ def admin_list_products(status: str | None = None, page: int = 1, page_size: int
 
 
 @router.post("")
-def create_product(payload: ProductCreate, user: User = Depends(require_roles(*PRODUCT_MANAGERS, "super_admin")),
+def create_product(payload: ProductCreate, user: User = Depends(require_roles(*PRODUCT_CONTRIBUTORS)),
                     db: Session = Depends(get_db)):
     if db.query(Product).filter(Product.sku == payload.sku).first():
         raise HTTPException(status_code=400, detail="A product with this SKU already exists.")
@@ -142,11 +148,19 @@ def create_product(payload: ProductCreate, user: User = Depends(require_roles(*P
 
 
 @router.put("/{product_id}")
-def update_product(product_id: str, payload: ProductUpdate, user: User = Depends(require_roles(*PRODUCT_MANAGERS, "super_admin")),
+def update_product(product_id: str, payload: ProductUpdate, user: User = Depends(require_roles(*PRODUCT_CONTRIBUTORS)),
                     db: Session = Depends(get_db)):
     p = db.get(Product, product_id)
     if not p:
         raise HTTPException(status_code=404, detail="Product not found.")
+    # A dealer may only edit their own listing, and only before it has
+    # been submitted for staff review - once it moves to in_review or
+    # beyond, further changes go through staff (PRODUCT_MANAGERS).
+    if user.role == ROLE_DEALER:
+        if p.created_by_id != user.id:
+            raise HTTPException(status_code=403, detail="You can only edit your own product listings.")
+        if p.status != "draft":
+            raise HTTPException(status_code=400, detail="This listing has already been submitted and can no longer be edited directly.")
     for field, value in payload.model_dump().items():
         setattr(p, field, value)
     p.updated_by_id = user.id
@@ -158,11 +172,17 @@ def update_product(product_id: str, payload: ProductUpdate, user: User = Depends
 
 @router.post("/{product_id}/transition/{new_status}")
 def transition_product(product_id: str, new_status: str, payload: ProductStatusChange,
-                        user: User = Depends(require_roles(*PRODUCT_MANAGERS, "super_admin")),
+                        user: User = Depends(require_roles(*PRODUCT_CONTRIBUTORS)),
                         db: Session = Depends(get_db)):
     p = db.get(Product, product_id)
     if not p:
         raise HTTPException(status_code=404, detail="Product not found.")
+    # A dealer's only allowed transition is submitting their own draft for
+    # staff review - approving/publishing/archiving/rejecting stays with
+    # PRODUCT_MANAGERS, same as the certificate/photo verification workflow.
+    if user.role == ROLE_DEALER:
+        if p.created_by_id != user.id or new_status != "in_review" or p.status != "draft":
+            raise HTTPException(status_code=403, detail="Dealers may only submit their own draft listing for review.")
     allowed = VALID_TRANSITIONS.get(p.status, set())
     if new_status not in allowed:
         raise HTTPException(status_code=400, detail=f"Cannot move product from '{p.status}' to '{new_status}'.")

@@ -9,7 +9,11 @@ from app.models import models  # noqa: F401 ensures all models are registered
 
 config = context.config
 settings = get_settings()
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+# configparser (which backs Config.set_main_option) treats "%" as its own
+# interpolation escape character - a DATABASE_URL with a URL-encoded
+# password (e.g. "%40" for "@") crashes with "invalid interpolation
+# syntax" unless every literal "%" is doubled first.
+config.set_main_option("sqlalchemy.url", settings.DATABASE_URL.replace("%", "%%"))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
