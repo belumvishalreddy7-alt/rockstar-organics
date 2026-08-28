@@ -76,7 +76,7 @@ def test_publish_requires_fields(client, super_admin):
     assert r.status_code == 400  # missing category/description/precautions
 
 
-def test_dealer_can_submit_a_product_listing_but_not_approve_or_publish_it(client, approved_dealer):
+def test_dealer_can_submit_a_product_listing_but_not_approve_or_publish_it(client, approved_dealer, super_admin):
     _, email, password, _ = approved_dealer
     _login(client, email, password)
 
@@ -102,7 +102,6 @@ def test_dealer_can_submit_a_product_listing_but_not_approve_or_publish_it(clien
 
     # ...but cannot approve, publish, or delete it themselves.
     assert client.post(f"/api/v1/products/{pid}/transition/approved", json={}).status_code == 403
-    assert client.post(f"/api/v1/products/{pid}/transition/published", json={}).status_code == 403
     assert client.delete(f"/api/v1/products/{pid}").status_code == 403
 
     # nor edit it further once it's out of draft
@@ -110,6 +109,18 @@ def test_dealer_can_submit_a_product_listing_but_not_approve_or_publish_it(clien
         "sku": "SKU-DLR-001", "name": "x", "slug": "dealer-submitted-fertilizer",
         "precautions": "x", "full_description": "x",
     }).status_code == 400
+
+    # A real approver moves it to approved...
+    client.post("/api/v1/auth/logout")
+    _, admin_email, admin_password = super_admin
+    _login(client, admin_email, admin_password)
+    approve = client.post(f"/api/v1/products/{pid}/transition/approved", json={})
+    assert approve.status_code == 200
+    client.post("/api/v1/auth/logout")
+
+    # ...but even now, the dealer still cannot publish their own approved listing.
+    _login(client, email, password)
+    assert client.post(f"/api/v1/products/{pid}/transition/published", json={}).status_code == 403
 
 
 def test_dealer_cannot_see_or_modify_another_dealers_product(client, approved_dealer):

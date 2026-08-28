@@ -7,21 +7,71 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.audit import record_audit
 from app.core.database import get_db
 from app.core.deps import require_roles, require_user
-from app.core.permissions import PRODUCT_CONTRIBUTORS, PRODUCT_MANAGERS, ROLE_DEALER
-from app.models.models import Product, ProductReview, User
-from app.schemas.schemas import ProductCreate, ProductStatusChange, ProductUpdate
+from app.core.permissions import CONTENT_VERIFIERS, PRODUCT_CONTRIBUTORS, PRODUCT_MANAGERS, ROLE_DEALER, SETTINGS_MANAGERS
+from app.models.models import (
+    Product,
+    ProductCertification,
+    ProductClaim,
+    ProductCrop,
+    ProductDocument,
+    ProductPackSize,
+    ProductReview,
+    User,
+)
+from app.schemas.schemas import (
+    ProductCertificationCreate,
+    ProductClaimCreate,
+    ProductCreate,
+    ProductCropCreate,
+    ProductDocumentCreate,
+    ProductPackSizeCreate,
+    ProductStatusChange,
+    ProductUpdate,
+    VerificationStatusChange,
+)
 
 router = APIRouter(prefix="/api/v1/products", tags=["products"])
 
-VALID_TRANSITIONS = {
-    "draft": {"in_review", "archived"},
-    "in_review": {"approved", "rejected", "draft"},
-    "approved": {"published", "draft"},
-    "published": {"unpublished", "archived"},
-    "unpublished": {"published", "archived"},
-    "archived": {"draft"},
-    "rejected": {"draft"},
+# Every (from_status, to_status) pair the workflow allows, mapped to the role
+# set required to make that specific move. draft->in_review is kept as a
+# direct path (not just draft->pending_verification->in_review) so every
+# product created before 2026-08-28 and every existing test keeps working -
+# pending_verification/revision_required are an additional, fuller path,
+# not a replacement of the original shorter one.
+#
+# Role tiers, reusing the sets already defined in app.core.permissions
+# instead of inventing a parallel authorization system (same pattern as
+# company_documents.py/agriculture_photos.py's verify-then-approve split):
+#   PRODUCT_CONTRIBUTORS - staff + dealer: create/submit their own work
+#   PRODUCT_MANAGERS     - staff only (no dealer): can send content back
+#   CONTENT_VERIFIERS    - super_admin/admin/content_manager: the "verifier"
+#   SETTINGS_MANAGERS    - super_admin/admin only: the "approver"/publisher
+TRANSITION_RULES: dict[tuple[str, str], set[str]] = {
+    ("draft", "pending_verification"): PRODUCT_CONTRIBUTORS,
+    ("draft", "in_review"): PRODUCT_CONTRIBUTORS,
+    ("draft", "archived"): PRODUCT_MANAGERS,
+    ("pending_verification", "in_review"): CONTENT_VERIFIERS,
+    ("pending_verification", "revision_required"): CONTENT_VERIFIERS,
+    ("pending_verification", "draft"): PRODUCT_MANAGERS,
+    ("in_review", "approved"): SETTINGS_MANAGERS,
+    ("in_review", "rejected"): CONTENT_VERIFIERS,
+    ("in_review", "revision_required"): CONTENT_VERIFIERS,
+    ("in_review", "draft"): PRODUCT_MANAGERS,
+    ("revision_required", "draft"): PRODUCT_MANAGERS,
+    ("revision_required", "pending_verification"): PRODUCT_CONTRIBUTORS,
+    ("approved", "published"): SETTINGS_MANAGERS,
+    ("approved", "draft"): PRODUCT_MANAGERS,
+    ("published", "unpublished"): SETTINGS_MANAGERS,
+    ("published", "archived"): SETTINGS_MANAGERS,
+    ("unpublished", "published"): SETTINGS_MANAGERS,
+    ("unpublished", "archived"): SETTINGS_MANAGERS,
+    ("archived", "draft"): PRODUCT_MANAGERS,
+    ("rejected", "draft"): PRODUCT_MANAGERS,
 }
+
+VALID_TRANSITIONS: dict[str, set[str]] = {}
+for (_from, _to), _roles in TRANSITION_RULES.items():
+    VALID_TRANSITIONS.setdefault(_from, set()).add(_to)
 
 
 def _empty_rating_summary() -> dict:
@@ -63,7 +113,52 @@ def _rating_summaries(db: Session, product_ids: list[str]) -> dict[str, dict]:
     return summaries
 
 
-def _serialize(p: Product, rating_summary: dict) -> dict:
+def _pack_size_out(ps: ProductPackSize) -> dict:
+    return {"id": ps.id, "quantity": ps.quantity, "unit": ps.unit, "packaging_type": ps.packaging_type,
+            "sku": ps.sku, "availability_status": ps.availability_status}
+
+
+def _crop_out(c: ProductCrop) -> dict:
+    return {"id": c.id, "crop_name": c.crop_name, "crop_category": c.crop_category,
+            "target_use": c.target_use, "application_stage": c.application_stage}
+
+
+def _claim_out(c: ProductClaim) -> dict:
+    return {"id": c.id, "claim_text": c.claim_text, "category": c.category,
+            "source_evidence": c.source_evidence, "verification_status": c.verification_status}
+
+
+def _certification_out(c: ProductCertification) -> dict:
+    return {"id": c.id, "name": c.name, "issuing_organization": c.issuing_organization,
+            "certificate_number": c.certificate_number,
+            "issue_date": c.issue_date.isoformat() if c.issue_date else None,
+            "expiry_date": c.expiry_date.isoformat() if c.expiry_date else None,
+            "media_id": c.media_id, "verification_status": c.verification_status}
+
+
+def _document_out(d: ProductDocument) -> dict:
+    return {"id": d.id, "document_type": d.document_type, "title": d.title, "version": d.version,
+            "issue_date": d.issue_date.isoformat() if d.issue_date else None,
+            "expiry_date": d.expiry_date.isoformat() if d.expiry_date else None,
+            "document_number": d.document_number, "media_id": d.media_id,
+            "verification_status": d.verification_status}
+
+
+def _serialize(db: Session, p: Product, rating_summary: dict, *, public: bool = False) -> dict:
+    pack_sizes = db.query(ProductPackSize).filter(ProductPackSize.product_id == p.id).order_by(ProductPackSize.sort_order).all()
+    crops = db.query(ProductCrop).filter(ProductCrop.product_id == p.id).order_by(ProductCrop.sort_order).all()
+    claims = db.query(ProductClaim).filter(ProductClaim.product_id == p.id).all()
+    certifications = db.query(ProductCertification).filter(ProductCertification.product_id == p.id).all()
+    documents = db.query(ProductDocument).filter(ProductDocument.product_id == p.id).all()
+    if public:
+        # A claim/certification/document is only shown publicly once
+        # verified - an unverified one existing internally must never leak
+        # onto the public product page, matching the "no unsupported claim"
+        # rule from the spec.
+        claims = [c for c in claims if c.verification_status == "verified"]
+        certifications = [c for c in certifications if c.verification_status == "verified"]
+        documents = [d for d in documents if d.verification_status == "verified"]
+
     return {
         "id": p.id, "sku": p.sku, "name": p.name, "slug": p.slug, "category_id": p.category_id,
         "product_type": p.product_type, "short_description": p.short_description,
@@ -71,9 +166,18 @@ def _serialize(p: Product, rating_summary: dict) -> dict:
         "recommended_crops": p.recommended_crops, "crop_stage": p.crop_stage,
         "application_method": p.application_method, "dosage_value": p.dosage_value,
         "dosage_unit": p.dosage_unit, "pack_sizes": p.pack_sizes, "precautions": p.precautions,
-        "regulatory_notes": p.regulatory_notes, "status": p.status, "featured": p.featured,
+        "regulatory_notes": p.regulatory_notes,
+        "active_ingredients": p.active_ingredients, "nutrient_content": p.nutrient_content,
+        "concentration": p.concentration, "formulation": p.formulation, "grade": p.grade,
+        "physical_form": p.physical_form, "technical_specifications": p.technical_specifications,
+        "status": p.status, "featured": p.featured,
         "updated_at": p.updated_at.isoformat() if p.updated_at else None,
         "images": [{"id": i.id, "file_path": i.file_path, "alt_text": i.alt_text} for i in p.images],
+        "pack_size_records": [_pack_size_out(x) for x in pack_sizes],
+        "crops": [_crop_out(x) for x in crops],
+        "claims": [_claim_out(x) for x in claims],
+        "certifications": [_certification_out(x) for x in certifications],
+        "documents": [_document_out(x) for x in documents],
         **rating_summary,
     }
 
@@ -98,7 +202,8 @@ def public_catalogue(
     total = query.count()
     items = query.order_by(Product.published_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
     summaries = _rating_summaries(db, [p.id for p in items])
-    return {"total": total, "page": page, "page_size": page_size, "items": [_serialize(p, summaries[p.id]) for p in items]}
+    return {"total": total, "page": page, "page_size": page_size,
+            "items": [_serialize(db, p, summaries[p.id], public=True) for p in items]}
 
 
 @router.get("/public/{slug}")
@@ -106,7 +211,7 @@ def public_product_detail(slug: str, db: Session = Depends(get_db)):
     p = db.query(Product).filter(Product.slug == slug, Product.status == "published").first()
     if not p:
         raise HTTPException(status_code=404, detail="Product not found.")
-    out = _serialize(p, _rating_summaries(db, [p.id])[p.id])
+    out = _serialize(db, p, _rating_summaries(db, [p.id])[p.id], public=True)
     reviews = db.query(ProductReview).filter(ProductReview.product_id == p.id, ProductReview.status == "approved").order_by(ProductReview.created_at.desc()).all()
     out["reviews"] = [{"id": r.id, "reviewer_name": r.reviewer_name, "rating": r.rating, "comment": r.comment, "created_at": r.created_at.isoformat()} for r in reviews]
     return out
@@ -128,7 +233,7 @@ def admin_list_products(status: str | None = None, page: int = 1, page_size: int
     total = query.count()
     items = query.order_by(Product.updated_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
     summaries = _rating_summaries(db, [p.id for p in items])
-    return {"total": total, "items": [_serialize(p, summaries[p.id]) for p in items]}
+    return {"total": total, "items": [_serialize(db, p, summaries[p.id]) for p in items]}
 
 
 @router.post("")
@@ -144,7 +249,7 @@ def create_product(payload: ProductCreate, user: User = Depends(require_roles(*P
     record_audit(db, actor_id=user.id, action="product.create", entity_type="product", entity_id=p.id, summary=f"Created draft product {p.name}")
     db.commit()
     db.refresh(p)
-    return _serialize(p, _rating_summaries(db, [p.id])[p.id])
+    return _serialize(db, p, _rating_summaries(db, [p.id])[p.id])
 
 
 @router.put("/{product_id}")
@@ -167,7 +272,7 @@ def update_product(product_id: str, payload: ProductUpdate, user: User = Depends
     record_audit(db, actor_id=user.id, action="product.update", entity_type="product", entity_id=p.id, summary=f"Updated product {p.name}")
     db.commit()
     db.refresh(p)
-    return _serialize(p, _rating_summaries(db, [p.id])[p.id])
+    return _serialize(db, p, _rating_summaries(db, [p.id])[p.id])
 
 
 @router.post("/{product_id}/transition/{new_status}")
@@ -177,15 +282,17 @@ def transition_product(product_id: str, new_status: str, payload: ProductStatusC
     p = db.get(Product, product_id)
     if not p:
         raise HTTPException(status_code=404, detail="Product not found.")
-    # A dealer's only allowed transition is submitting their own draft for
-    # staff review - approving/publishing/archiving/rejecting stays with
-    # PRODUCT_MANAGERS, same as the certificate/photo verification workflow.
-    if user.role == ROLE_DEALER:
-        if p.created_by_id != user.id or new_status != "in_review" or p.status != "draft":
-            raise HTTPException(status_code=403, detail="Dealers may only submit their own draft listing for review.")
-    allowed = VALID_TRANSITIONS.get(p.status, set())
-    if new_status not in allowed:
+    rule_key = (p.status, new_status)
+    if rule_key not in TRANSITION_RULES:
         raise HTTPException(status_code=400, detail=f"Cannot move product from '{p.status}' to '{new_status}'.")
+    required_roles = TRANSITION_RULES[rule_key]
+    if user.role not in required_roles:
+        raise HTTPException(status_code=403, detail=f"You are not authorized to move a product from '{p.status}' to '{new_status}'.")
+    # Even within an allowed role, a dealer may only ever act on their own
+    # listing - PRODUCT_CONTRIBUTORS-gated transitions (submitting a draft)
+    # would otherwise let one dealer submit another dealer's draft.
+    if user.role == ROLE_DEALER and p.created_by_id != user.id:
+        raise HTTPException(status_code=403, detail="You can only submit your own product listings.")
 
     if new_status == "published":
         missing = []
@@ -213,7 +320,7 @@ def transition_product(product_id: str, new_status: str, payload: ProductStatusC
                  summary=f"Product {p.name} moved from {old_status} to {new_status}")
     db.commit()
     db.refresh(p)
-    return _serialize(p, _rating_summaries(db, [p.id])[p.id])
+    return _serialize(db, p, _rating_summaries(db, [p.id])[p.id])
 
 
 @router.delete("/{product_id}")
@@ -223,5 +330,223 @@ def delete_product(product_id: str, user: User = Depends(require_roles("super_ad
         raise HTTPException(status_code=404, detail="Product not found.")
     record_audit(db, actor_id=user.id, action="product.delete", entity_type="product", entity_id=p.id, summary=f"Permanently deleted product {p.name}")
     db.delete(p)
+    db.commit()
+    return {"ok": True}
+
+
+def _get_product_or_404(db: Session, product_id: str) -> Product:
+    p = db.get(Product, product_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Product not found.")
+    return p
+
+
+def _require_contributor_access(p: Product, user: User) -> None:
+    """A dealer may only add sub-records (pack sizes, crops, claims,
+    certifications, documents) to their own listing, and only while it's
+    still a draft - identical rule to update_product/upload_product_image,
+    kept in one place so every sub-resource endpoint enforces it the same
+    way."""
+    if user.role == ROLE_DEALER and (p.created_by_id != user.id or p.status != "draft"):
+        raise HTTPException(status_code=403, detail="You can only add details to your own draft listings.")
+
+
+# --- Pack sizes ---------------------------------------------------------
+
+@router.post("/{product_id}/pack-sizes")
+def add_pack_size(product_id: str, payload: ProductPackSizeCreate,
+                   user: User = Depends(require_roles(*PRODUCT_CONTRIBUTORS)), db: Session = Depends(get_db)):
+    p = _get_product_or_404(db, product_id)
+    _require_contributor_access(p, user)
+    row = ProductPackSize(product_id=p.id, sort_order=db.query(ProductPackSize).filter(ProductPackSize.product_id == p.id).count(),
+                           **payload.model_dump())
+    db.add(row)
+    record_audit(db, actor_id=user.id, action="product.pack_size.add", entity_type="product", entity_id=p.id,
+                 summary=f"Pack size added to {p.name}: {payload.quantity} {payload.unit}")
+    db.commit()
+    return _pack_size_out(row)
+
+
+@router.delete("/{product_id}/pack-sizes/{pack_size_id}")
+def remove_pack_size(product_id: str, pack_size_id: str,
+                      user: User = Depends(require_roles(*PRODUCT_CONTRIBUTORS)), db: Session = Depends(get_db)):
+    p = _get_product_or_404(db, product_id)
+    _require_contributor_access(p, user)
+    row = db.get(ProductPackSize, pack_size_id)
+    if not row or row.product_id != p.id:
+        raise HTTPException(status_code=404, detail="Pack size not found.")
+    db.delete(row)
+    record_audit(db, actor_id=user.id, action="product.pack_size.remove", entity_type="product", entity_id=p.id, summary=f"Pack size removed from {p.name}")
+    db.commit()
+    return {"ok": True}
+
+
+# --- Crops ---------------------------------------------------------------
+
+@router.post("/{product_id}/crops")
+def add_crop(product_id: str, payload: ProductCropCreate,
+             user: User = Depends(require_roles(*PRODUCT_CONTRIBUTORS)), db: Session = Depends(get_db)):
+    p = _get_product_or_404(db, product_id)
+    _require_contributor_access(p, user)
+    row = ProductCrop(product_id=p.id, sort_order=db.query(ProductCrop).filter(ProductCrop.product_id == p.id).count(),
+                       **payload.model_dump())
+    db.add(row)
+    record_audit(db, actor_id=user.id, action="product.crop.add", entity_type="product", entity_id=p.id,
+                 summary=f"Crop association added to {p.name}: {payload.crop_name}")
+    db.commit()
+    return _crop_out(row)
+
+
+@router.delete("/{product_id}/crops/{crop_id}")
+def remove_crop(product_id: str, crop_id: str,
+                 user: User = Depends(require_roles(*PRODUCT_CONTRIBUTORS)), db: Session = Depends(get_db)):
+    p = _get_product_or_404(db, product_id)
+    _require_contributor_access(p, user)
+    row = db.get(ProductCrop, crop_id)
+    if not row or row.product_id != p.id:
+        raise HTTPException(status_code=404, detail="Crop association not found.")
+    db.delete(row)
+    record_audit(db, actor_id=user.id, action="product.crop.remove", entity_type="product", entity_id=p.id, summary=f"Crop association removed from {p.name}")
+    db.commit()
+    return {"ok": True}
+
+
+# --- Claims ----------------------------------------------------------------
+
+@router.post("/{product_id}/claims")
+def add_claim(product_id: str, payload: ProductClaimCreate,
+              user: User = Depends(require_roles(*PRODUCT_CONTRIBUTORS)), db: Session = Depends(get_db)):
+    p = _get_product_or_404(db, product_id)
+    _require_contributor_access(p, user)
+    row = ProductClaim(product_id=p.id, **payload.model_dump())
+    db.add(row)
+    record_audit(db, actor_id=user.id, action="product.claim.add", entity_type="product", entity_id=p.id, summary=f"Claim added to {p.name}")
+    db.commit()
+    return _claim_out(row)
+
+
+@router.post("/{product_id}/claims/{claim_id}/verify")
+def verify_claim(product_id: str, claim_id: str, payload: VerificationStatusChange,
+                  user: User = Depends(require_roles(*CONTENT_VERIFIERS)), db: Session = Depends(get_db)):
+    """A claim is never shown on the public product page until a verifier
+    (never the submitter) marks it verified - see _serialize's public
+    filtering above."""
+    p = _get_product_or_404(db, product_id)
+    row = db.get(ProductClaim, claim_id)
+    if not row or row.product_id != p.id:
+        raise HTTPException(status_code=404, detail="Claim not found.")
+    row.verification_status = payload.verification_status
+    row.verified_by_id = user.id
+    row.verified_at = dt.datetime.utcnow()
+    record_audit(db, actor_id=user.id, action="product.claim.verify", entity_type="product", entity_id=p.id,
+                 summary=f"Claim on {p.name} marked {payload.verification_status}")
+    db.commit()
+    return _claim_out(row)
+
+
+@router.delete("/{product_id}/claims/{claim_id}")
+def remove_claim(product_id: str, claim_id: str,
+                  user: User = Depends(require_roles(*PRODUCT_CONTRIBUTORS)), db: Session = Depends(get_db)):
+    p = _get_product_or_404(db, product_id)
+    _require_contributor_access(p, user)
+    row = db.get(ProductClaim, claim_id)
+    if not row or row.product_id != p.id:
+        raise HTTPException(status_code=404, detail="Claim not found.")
+    db.delete(row)
+    record_audit(db, actor_id=user.id, action="product.claim.remove", entity_type="product", entity_id=p.id, summary=f"Claim removed from {p.name}")
+    db.commit()
+    return {"ok": True}
+
+
+# --- Certifications ----------------------------------------------------
+
+@router.post("/{product_id}/certifications")
+def add_certification(product_id: str, payload: ProductCertificationCreate,
+                       user: User = Depends(require_roles(*PRODUCT_CONTRIBUTORS)), db: Session = Depends(get_db)):
+    p = _get_product_or_404(db, product_id)
+    _require_contributor_access(p, user)
+    row = ProductCertification(product_id=p.id, **payload.model_dump())
+    db.add(row)
+    record_audit(db, actor_id=user.id, action="product.certification.add", entity_type="product", entity_id=p.id,
+                 summary=f"Certification added to {p.name}: {payload.name}")
+    db.commit()
+    return _certification_out(row)
+
+
+@router.post("/{product_id}/certifications/{certification_id}/verify")
+def verify_certification(product_id: str, certification_id: str, payload: VerificationStatusChange,
+                          user: User = Depends(require_roles(*CONTENT_VERIFIERS)), db: Session = Depends(get_db)):
+    p = _get_product_or_404(db, product_id)
+    row = db.get(ProductCertification, certification_id)
+    if not row or row.product_id != p.id:
+        raise HTTPException(status_code=404, detail="Certification not found.")
+    row.verification_status = payload.verification_status
+    record_audit(db, actor_id=user.id, action="product.certification.verify", entity_type="product", entity_id=p.id,
+                 summary=f"Certification on {p.name} marked {payload.verification_status}")
+    db.commit()
+    return _certification_out(row)
+
+
+@router.delete("/{product_id}/certifications/{certification_id}")
+def remove_certification(product_id: str, certification_id: str,
+                          user: User = Depends(require_roles(*PRODUCT_CONTRIBUTORS)), db: Session = Depends(get_db)):
+    p = _get_product_or_404(db, product_id)
+    _require_contributor_access(p, user)
+    row = db.get(ProductCertification, certification_id)
+    if not row or row.product_id != p.id:
+        raise HTTPException(status_code=404, detail="Certification not found.")
+    db.delete(row)
+    record_audit(db, actor_id=user.id, action="product.certification.remove", entity_type="product", entity_id=p.id, summary=f"Certification removed from {p.name}")
+    db.commit()
+    return {"ok": True}
+
+
+# --- Documents (technical data sheets, SDS, labels, brochures, ...) ------
+
+@router.post("/{product_id}/documents")
+def add_document(product_id: str, payload: ProductDocumentCreate,
+                  user: User = Depends(require_roles(*PRODUCT_CONTRIBUTORS)), db: Session = Depends(get_db)):
+    """Metadata only - the actual file is uploaded first via
+    POST /api/v1/media/products/{product_id}/documents, which returns the
+    media_id this call references."""
+    p = _get_product_or_404(db, product_id)
+    _require_contributor_access(p, user)
+    row = ProductDocument(product_id=p.id, uploaded_by_id=user.id, **payload.model_dump())
+    db.add(row)
+    record_audit(db, actor_id=user.id, action="product.document.add", entity_type="product", entity_id=p.id,
+                 summary=f"Document added to {p.name}: {payload.title} ({payload.document_type})")
+    db.commit()
+    return _document_out(row)
+
+
+@router.post("/{product_id}/documents/{document_id}/verify")
+def verify_document(product_id: str, document_id: str, payload: VerificationStatusChange,
+                     user: User = Depends(require_roles(*CONTENT_VERIFIERS)), db: Session = Depends(get_db)):
+    """Covers the official label/package artwork too (document_type="label")
+    - it must be verified here, same as any other product document, before
+    _serialize's public filtering will ever include it."""
+    p = _get_product_or_404(db, product_id)
+    row = db.get(ProductDocument, document_id)
+    if not row or row.product_id != p.id:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    row.verification_status = payload.verification_status
+    row.reviewed_by_id = user.id
+    row.reviewed_at = dt.datetime.utcnow()
+    record_audit(db, actor_id=user.id, action="product.document.verify", entity_type="product", entity_id=p.id,
+                 summary=f"Document on {p.name} marked {payload.verification_status}")
+    db.commit()
+    return _document_out(row)
+
+
+@router.delete("/{product_id}/documents/{document_id}")
+def remove_document(product_id: str, document_id: str,
+                     user: User = Depends(require_roles(*PRODUCT_CONTRIBUTORS)), db: Session = Depends(get_db)):
+    p = _get_product_or_404(db, product_id)
+    _require_contributor_access(p, user)
+    row = db.get(ProductDocument, document_id)
+    if not row or row.product_id != p.id:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    db.delete(row)
+    record_audit(db, actor_id=user.id, action="product.document.remove", entity_type="product", entity_id=p.id, summary=f"Document removed from {p.name}")
     db.commit()
     return {"ok": True}

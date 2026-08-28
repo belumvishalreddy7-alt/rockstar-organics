@@ -152,6 +152,13 @@ class ProductCreate(BaseModel):
     pack_sizes: str | None = Field(default=None, max_length=255)
     precautions: str | None = Field(default=None, max_length=5000)
     regulatory_notes: str | None = Field(default=None, max_length=5000)
+    active_ingredients: str | None = Field(default=None, max_length=5000)
+    nutrient_content: str | None = Field(default=None, max_length=5000)
+    concentration: str | None = Field(default=None, max_length=100)
+    formulation: str | None = Field(default=None, max_length=100)
+    grade: str | None = Field(default=None, max_length=100)
+    physical_form: str | None = Field(default=None, max_length=100)
+    technical_specifications: str | None = Field(default=None, max_length=5000)
 
     @field_validator("slug")
     @classmethod
@@ -167,6 +174,93 @@ class ProductUpdate(ProductCreate):
 
 class ProductStatusChange(BaseModel):
     reason: str | None = Field(default=None, max_length=2000)
+
+
+PACK_SIZE_AVAILABILITY_VALUES = {"available", "out_of_stock", "discontinued"}
+
+
+class ProductPackSizeCreate(BaseModel):
+    quantity: str = Field(min_length=1, max_length=30)
+    unit: str = Field(min_length=1, max_length=20)
+    packaging_type: str | None = Field(default=None, max_length=60)
+    sku: str | None = Field(default=None, max_length=60)
+    availability_status: str = "available"
+
+    @field_validator("availability_status")
+    @classmethod
+    def valid_availability(cls, v):
+        if v not in PACK_SIZE_AVAILABILITY_VALUES:
+            raise ValueError(f"availability_status must be one of: {', '.join(sorted(PACK_SIZE_AVAILABILITY_VALUES))}.")
+        return v
+
+
+class ProductCropCreate(BaseModel):
+    crop_name: str = Field(min_length=1, max_length=100)
+    crop_category: str | None = Field(default=None, max_length=100)
+    target_use: str | None = Field(default=None, max_length=255)
+    application_stage: str | None = Field(default=None, max_length=100)
+
+
+CLAIM_CATEGORY_VALUES = {"benefit", "technical", "crop", "quality", "certification"}
+
+
+class ProductClaimCreate(BaseModel):
+    claim_text: str = Field(min_length=1, max_length=2000)
+    category: str = "benefit"
+    source_evidence: str | None = Field(default=None, max_length=2000)
+
+    @field_validator("category")
+    @classmethod
+    def valid_category(cls, v):
+        if v not in CLAIM_CATEGORY_VALUES:
+            raise ValueError(f"category must be one of: {', '.join(sorted(CLAIM_CATEGORY_VALUES))}.")
+        return v
+
+
+class ProductCertificationCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    issuing_organization: str | None = Field(default=None, max_length=255)
+    certificate_number: str | None = Field(default=None, max_length=100)
+    issue_date: dt.datetime | None = None
+    expiry_date: dt.datetime | None = None
+    media_id: str | None = None
+
+
+PRODUCT_DOCUMENT_TYPE_VALUES = {
+    "technical_data_sheet", "specification", "safety_data_sheet", "certificate",
+    "registration", "label", "brochure", "catalogue", "regulatory", "other",
+}
+
+
+class ProductDocumentCreate(BaseModel):
+    document_type: str
+    title: str = Field(min_length=1, max_length=255)
+    version: str | None = Field(default=None, max_length=30)
+    issue_date: dt.datetime | None = None
+    expiry_date: dt.datetime | None = None
+    document_number: str | None = Field(default=None, max_length=100)
+    media_id: str
+
+    @field_validator("document_type")
+    @classmethod
+    def valid_document_type(cls, v):
+        if v not in PRODUCT_DOCUMENT_TYPE_VALUES:
+            raise ValueError(f"document_type must be one of: {', '.join(sorted(PRODUCT_DOCUMENT_TYPE_VALUES))}.")
+        return v
+
+
+VERIFICATION_STATUS_VALUES = {"pending", "verified", "rejected"}
+
+
+class VerificationStatusChange(BaseModel):
+    verification_status: str
+
+    @field_validator("verification_status")
+    @classmethod
+    def valid_status(cls, v):
+        if v not in VERIFICATION_STATUS_VALUES:
+            raise ValueError(f"verification_status must be one of: {', '.join(sorted(VERIFICATION_STATUS_VALUES))}.")
+        return v
 
 
 class SupportCaseCreate(BaseModel):
