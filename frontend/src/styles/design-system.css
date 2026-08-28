@@ -89,7 +89,9 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   border-bottom: 3px solid var(--color-soil-600);
 }
 .site-header .container { display: flex; align-items: center; justify-content: space-between; padding-top: 14px; padding-bottom: 14px; flex-wrap: wrap; gap: 12px; }
-.brand { display: flex; align-items: baseline; gap: 10px; color: #fff; text-decoration: none; }
+.brand { display: flex; align-items: center; gap: 10px; color: #fff; text-decoration: none; }
+.brand-logo { flex-shrink: 0; display: block; }
+.brand-text { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .brand-mark { font-family: var(--font-serif); font-weight: 700; font-size: 1.3rem; }
 .brand-tag { font-size: 0.8rem; color: #c9d6c9; }
 .main-nav { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }

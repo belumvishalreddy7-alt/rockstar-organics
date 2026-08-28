@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import logoMark from "../assets/logo-mark.svg";
 
 const STAFF_ROLES = ["super_admin", "admin", "content_manager", "sales_manager", "field_officer"];
 
@@ -25,8 +26,11 @@ export function SiteHeader() {
     <header className="site-header">
       <div className="container">
         <a className="brand" href="/">
-          <span className="brand-mark">Rockstar Organics</span>
-          <span className="brand-tag">Hyderabad &amp; Ranga Reddy region</span>
+          <img src={logoMark} alt="" width="40" height="40" className="brand-logo" />
+          <span className="brand-text">
+            <span className="brand-mark">Rockstar Organics</span>
+            <span className="brand-tag">Hyderabad &amp; Ranga Reddy region</span>
+          </span>
         </a>
         <button className="nav-toggle" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls="main-nav">
           Menu
