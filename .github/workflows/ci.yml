@@ -1,3 +1,11 @@
+# CI gate: pytest -> frontend typecheck/vitest/build -> Playwright e2e,
+# always. The `build-and-push-images`/`deploy-production` jobs below target
+# an AWS ECS deployment path (infra/terraform/) that this project is NOT
+# currently using in production - the real deployment is Vercel (frontend)
+# + Render (backend), which deploy via their own git integrations outside
+# this workflow (see README.md "Deployment"). Those two jobs are harmless
+# no-ops/failures as long as AWS_DEPLOY_ROLE_ARN etc. aren't configured as
+# repository secrets, which they intentionally aren't for this project.
 name: CI
 
 on:

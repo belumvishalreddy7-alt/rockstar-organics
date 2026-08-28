@@ -57,6 +57,28 @@ def test_follow_up_task_overdue_flag_and_completion(client, super_admin):
     assert completed["completed_at"] is not None
 
 
+def test_task_assignment_rejects_nonexistent_assignee(client, super_admin):
+    _, email, password = super_admin
+    _login(client, email, password)
+    r = client.post("/api/v1/tasks", json={"title": "Follow up", "priority": "normal"})
+    tid = r.json()["id"]
+    r = client.post(f"/api/v1/tasks/{tid}/assign/not-a-real-user-id", json={})
+    assert r.status_code == 404
+
+
+def test_enquiry_assignment_rejects_nonexistent_staff(client, super_admin):
+    _, email, password = super_admin
+    unique_name = f"Assign Test {uuid.uuid4().hex[:8]}"
+    client.post("/api/v1/enquiries", json={
+        "enquiry_type": "general", "name": unique_name, "message": "Hello", "consent_given": True,
+    })
+    _login(client, email, password)
+    enquiries = client.get("/api/v1/enquiries").json()
+    eid = next(e["id"] for e in enquiries if e["name"] == unique_name)
+    r = client.post(f"/api/v1/enquiries/{eid}/assign/not-a-real-staff-id", json={})
+    assert r.status_code == 404
+
+
 def _publish_product(client, super_admin):
     _, email, password = super_admin
     _login(client, email, password)

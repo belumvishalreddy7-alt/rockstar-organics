@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.6.0 — Production deployment readiness (Render + Vercel + Supabase + Brevo)
+
+- Added `render.yaml` documenting the backend's actual Render service
+  configuration (no secrets - every sensitive var is `sync: false`),
+  including a corrected start command that runs `alembic upgrade head`
+  before serving traffic, matching the Docker path's existing behavior.
+- README, `docs/STAFF_GUIDE.md`: replaced stale Resend/test-count
+  references with the real Brevo/Supabase setup; added a full "Deployment"
+  section documenting the actual Vercel+Render+Supabase+Brevo topology,
+  a Troubleshooting section, and certificate/agriculture-photo/rating-
+  moderation staff workflows that were previously undocumented. Removed
+  leftover UTF-16 garbage bytes at the end of README.md.
+- `.github/workflows/ci.yml`: added a header comment clarifying that the
+  AWS ECS deploy jobs are an inactive alternative path, not what this
+  project actually deploys through.
+- Closed a dangling-reference gap in `/tasks/{id}/assign/{assignee_id}`
+  and `/enquiries/{id}/assign/{staff_id}`: both now 404 if the assignee/
+  staff id doesn't correspond to a real user (matches the same fix
+  already applied to case assignment).
+- Verified (did not change): no hardcoded secrets anywhere in the repo;
+  `SUPABASE_SERVICE_ROLE_KEY`/`BREVO_API_KEY` never reach the frontend
+  bundle; Alembic's migration chain applies cleanly to PostgreSQL via an
+  offline dry run; every frontend API call maps to a real backend route.
+
 ## 1.4.0 — Real-world content pass
 
 - New Distributor role and portal: application -> verification -> approval

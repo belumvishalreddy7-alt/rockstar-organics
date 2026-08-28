@@ -1,0 +1,68 @@
+# Render Blueprint for the Rockstar Organics backend.
+#
+# This documents the ACTUAL production service (a Render Web Service
+# already created via the Render dashboard, not from this file) so the
+# configuration is versioned and reproducible. Adding this file to the
+# repo does NOT retroactively change the existing dashboard-managed
+# service - Render only syncs from a Blueprint when a service is
+# explicitly connected to one.
+#
+# The frontend is deployed separately on Vercel (git-linked to this same
+# repo, root directory `frontend`), not on Render - see README.md
+# "Deployment" for the full picture. Only the backend is defined here.
+#
+# No secrets appear in this file. Every sensitive value uses `sync: false`,
+# which tells Render "this variable exists, set its value in the
+# dashboard" - it is never read from or written to this repo.
+
+services:
+  - type: web
+    name: rockstar-organics-api
+    runtime: python
+    region: singapore
+    plan: free
+    branch: main
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    # Applies any pending Alembic migrations before starting the server on
+    # every deploy - idempotent (a no-op if already at head), matching the
+    # same pattern the backend Dockerfile's CMD already uses.
+    startCommand: alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: SECRET_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: COOKIE_SAMESITE
+        value: none # required for the frontend (Vercel) and backend (Render) being on different domains
+      - key: CORS_ORIGINS
+        sync: false # JSON array string of the real frontend origin(s), e.g. ["https://your-app.vercel.app"]
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_STORAGE_BUCKET
+        value: rockstar-organics-uploads
+      - key: BREVO_API_KEY
+        sync: false
+      - key: EMAIL_FROM_EMAIL
+        sync: false
+      - key: EMAIL_FROM_NAME
+        value: Rockstar Organics
+      - key: EMAIL_PROVIDER_ENABLED
+        value: "true"
+      - key: DEV_EXPOSE_OTP
+        value: "false"
+      - key: DEV_EXPOSE_RESET_TOKEN
+        value: "false"
+      - key: PUBLIC_APP_URL
+        sync: false # the frontend's real URL, used to build links inside emails (e.g. password reset)
+      - key: SENTRY_DSN
+        sync: false
+      - key: REDIS_URL
+        sync: false # optional; only needed once this service runs more than one instance/worker

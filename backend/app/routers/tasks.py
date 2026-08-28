@@ -66,6 +66,8 @@ def assign_task(task_id: str, assignee_id: str, user: User = Depends(require_rol
     t = db.get(FollowUpTask, task_id)
     if not t:
         raise HTTPException(status_code=404, detail="Task not found.")
+    if not db.get(User, assignee_id):
+        raise HTTPException(status_code=404, detail="Assignee not found.")
     t.assigned_user_id = assignee_id
     record_audit(db, actor_id=user.id, action="task.assign", entity_type="follow_up_task", entity_id=t.id, summary=f"Task {t.title} reassigned")
     db.commit()

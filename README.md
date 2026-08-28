@@ -72,12 +72,13 @@ Included and working end-to-end:
   (location, crop, date, photographer/source) render "Information pending
   verification." instead of being invented; public `/gallery` page, staff
   CRUD.
-- Real (not mocked) transactional email via Resend (`app/core/email.py`):
+- Real (not mocked) transactional email via Brevo (`app/core/email.py`):
   OTP codes, password resets, welcome emails, and dealer/distributor
-  approval credentials. Verified live against the real Resend API — see
-  `docs/SECURITY.md` for the exact result: the integration itself works,
-  but delivery needs a verified sending domain on the connected Resend
-  account before mail actually lands in an inbox.
+  approval credentials. Brevo was chosen specifically because this
+  deployment has no custom domain — a single verified sender address
+  (Brevo dashboard → Settings → Senders) is enough to send to arbitrary
+  recipients, with no domain-verification requirement. See
+  `docs/SECURITY.md` for the current delivery status.
 - Development demo accounts for all roles (`backend/scripts/
   seed_demo_accounts.py`); refuses to run when `ENVIRONMENT=production`.
 
@@ -87,13 +88,21 @@ Included and working end-to-end:
   Argon2 password hashing, itsdangerous session cookies.
 - **Frontend:** React 19, TypeScript, Vite, React Router, TanStack Query,
   a custom CSS design system (no component-library default styling).
-- **Database:** PostgreSQL in production; SQLite is supported for local
-  development using the same SQLAlchemy models and Alembic migrations.
-- **Testing:** Pytest (backend, 49 tests), Vitest (frontend component
-  tests), Playwright (end-to-end browser smoke tests, 9 tests).
-- **Ops:** GitHub Actions CI/CD, Sentry error tracking, Prometheus +
-  Grafana monitoring, Redis-backed rate limiting, Terraform (AWS) and
-  Kubernetes deployment manifests — see `docs/PRODUCTION_CHECKLIST.md`.
+- **Database:** PostgreSQL in production (Supabase); SQLite is supported
+  for local development using the same SQLAlchemy models and Alembic
+  migrations.
+- **File storage:** local disk for development; Supabase Storage in
+  production (`app/core/storage.py`) — a pluggable backend, so uploads
+  survive redeploys instead of living on ephemeral container disk.
+- **Email:** Brevo (`app/core/email.py`) — see "Email delivery" above.
+- **Testing:** Pytest (backend, 58 tests), Vitest (frontend component
+  tests), Playwright (end-to-end browser smoke tests, 10 tests).
+- **Ops:** GitHub Actions CI (test suite only — see "Deployment" below
+  for how this project actually ships), Sentry error tracking, Prometheus
+  + Grafana monitoring, Redis-backed rate limiting. `infra/terraform/`
+  (AWS) and `infra/k8s/` are alternative deployment paths this project
+  supports but does not currently use in production — see
+  `docs/PRODUCTION_CHECKLIST.md`.
 
 ## Folder structure
 
@@ -197,25 +206,114 @@ E2E_BASE_URL=http://localhost:5173 npm run e2e
 
 See `docs/TEST_REPORT.md` for the current results.
 
-## Production deployment, monitoring & backups
+## Deployment (actual production setup: Vercel + Render + Supabase + Brevo)
 
-- **CI/CD:** `.github/workflows/ci.yml` runs the full test suite (backend,
-  frontend, E2E) on every push/PR, builds and pushes Docker images once
-  everything passes, and deploys to production only behind an
-  approval-gated GitHub Environment.
-- **Hosting:** `infra/terraform/` (AWS: ECS Fargate, RDS, ElastiCache,
-  S3, ALB — see `infra/terraform/README.md`) or `infra/k8s/` (any
-  Kubernetes cluster).
+This is how the project is actually deployed today — not the only path it
+supports (see "Alternative deployment paths" below), but the real one.
+
+**Frontend — Vercel.** Git-linked to this repository's `main` branch (root
+directory `frontend`): a plain `git push origin main` triggers a real
+production build and deploy automatically. `frontend/vercel.json` provides
+the SPA catch-all rewrite direct-navigation routing needs.
+`frontend/.env.production` sets `VITE_API_BASE_URL` to the backend's
+public URL (not a secret — it's a public URL, safe to commit).
+
+**Backend — Render Web Service.** Python runtime, build command
+`cd backend && pip install -r requirements.txt`, start command
+`cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT`. Unlike
+the frontend, Render's git integration on this project does not reliably
+auto-deploy on push — trigger a deploy manually from the Render dashboard
+(or via the Render API) after pushing. See `render.yaml` for the full
+service definition (no secrets in it — every secret is `sync: false` and
+must be set in the Render dashboard directly).
+
+**Database — Supabase Postgres.** Set `DATABASE_URL` to the connection
+string from Supabase dashboard → Project Settings → Database → Connection
+string (URI). Migrations run the same way as any other Postgres target:
+`alembic upgrade head` (see "Local setup" above) — apply this against the
+Supabase database *before* traffic hits a new schema version. This
+project's Alembic chain has been verified to apply cleanly to Postgres via
+an offline dry run (`alembic upgrade head --sql`), but running it against
+the real Supabase instance is a manual, deliberate step — it is not run
+automatically on deploy.
+
+**File storage — Supabase Storage.** Set `SUPABASE_URL` and
+`SUPABASE_SERVICE_ROLE_KEY` (see `backend/.env.example`) to switch
+`app/core/storage.py` from local disk to Supabase Storage. Leave both
+unset to keep using local disk (fine for development, NOT persistent
+across Render redeploys in production).
+
+**Email — Brevo.** Set `BREVO_API_KEY`, `EMAIL_FROM_EMAIL` (must be a
+sender verified in the Brevo dashboard → Settings → Senders — Brevo
+rejects sends from an unverified sender outright, there is no sandbox
+fallback), and `EMAIL_PROVIDER_ENABLED=true`.
+
+**Custom domain.** Not yet configured — the site runs on Vercel's and
+Render's own subdomains today. When a custom domain is added: point its
+DNS at the target Vercel/Render provides in each platform's domain
+settings UI (a CNAME or A record, whichever that platform's own domain
+page specifies at the time), update `CORS_ORIGINS` on the backend to
+include the new frontend origin, and update `frontend/.env.production`'s
+`VITE_API_BASE_URL` if the backend also moves to a custom domain. Don't
+flip DNS until you've confirmed the exact target values in each
+platform's dashboard — they're assigned per-project, not fixed in advance.
+
+**Required production environment variables** (see `backend/.env.example`
+for the full list with descriptions): `ENVIRONMENT=production`,
+`SECRET_KEY`, `DATABASE_URL`, `COOKIE_SECURE=true`, `SUPABASE_URL`,
+`SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_STORAGE_BUCKET`, `BREVO_API_KEY`,
+`EMAIL_FROM_EMAIL`, `EMAIL_FROM_NAME`, `EMAIL_PROVIDER_ENABLED=true`,
+`DEV_EXPOSE_OTP=false`, `DEV_EXPOSE_RESET_TOKEN=false`, `CORS_ORIGINS`
+(the frontend's real origin(s)). The app refuses to start at all if
+`ENVIRONMENT=production` and any of `SECRET_KEY`/`COOKIE_SECURE`/
+`DEV_EXPOSE_OTP`/`DEV_EXPOSE_RESET_TOKEN` are left at an insecure value —
+see `app/core/config.py`'s `_validate_production_settings`.
+
+### Alternative deployment paths (supported, not currently used)
+
+- **Docker Compose** (`docker-compose.yml`) — a self-contained
+  Postgres+Redis+backend+nginx-fronted-frontend stack for a single-box
+  deployment or local integration testing. Migrations run automatically
+  on backend container start (see the backend `Dockerfile`'s `CMD`).
+- **AWS** (`infra/terraform/`: ECS Fargate, RDS, ElastiCache, S3, ALB) or
+  **Kubernetes** (`infra/k8s/`) — see `infra/terraform/README.md`.
+  `.github/workflows/ci.yml`'s `build-and-push-images`/`deploy-production`
+  jobs target this path specifically; they are inert (no-op / fail
+  harmlessly) unless `AWS_DEPLOY_ROLE_ARN` etc. are configured as GitHub
+  Actions secrets, which they are not for the actual Vercel/Render
+  deployment above.
 - **Monitoring:** `docker compose --profile monitoring up` runs Prometheus
   + Grafana locally against the backend's `/metrics` endpoint
   (`METRICS_ENABLED=true`); `ops/prometheus/alert_rules.yml` has starter
   alert rules for error rate, latency, and uptime.
 - **Error tracking:** set `SENTRY_DSN` (backend) / `VITE_SENTRY_DSN`
   (frontend) to enable Sentry; both are no-ops until configured.
-- **Backups:** `ops/backups/backup_db.sh` / `restore_db.sh`, scheduled via
-  `infra/k8s/cronjob-backup.yaml` or RDS's own automated backups.
+- **Backups:** `ops/backups/backup_db.sh` / `restore_db.sh` (written for a
+  self-managed Postgres); against Supabase, use Supabase's own
+  dashboard-driven backups/point-in-time-recovery instead (Project
+  Settings → Database → Backups).
 
 Full checklist: `docs/PRODUCTION_CHECKLIST.md`.
+
+### Troubleshooting
+
+- **`/api/ready` returns 503** — check the `database` field in its JSON
+  response; a Supabase project can be paused (free tier) or `DATABASE_URL`
+  can be wrong. `/api/health` only checks the process is up, not the DB.
+- **Signup/reset emails never arrive** — confirm `EMAIL_PROVIDER_ENABLED=true`,
+  `BREVO_API_KEY` is set, and `EMAIL_FROM_EMAIL` is verified as an active
+  sender in the Brevo dashboard (Settings → Senders) — an unverified
+  sender is rejected outright, with no partial delivery.
+- **Uploaded files disappear after a redeploy** — `SUPABASE_URL`/
+  `SUPABASE_SERVICE_ROLE_KEY` aren't set, so `app/core/storage.py` fell
+  back to the container's local disk, which Render does not persist
+  across deploys.
+- **App won't start at all in production** — check the startup log for
+  "Refusing to start with ENVIRONMENT=production and insecure settings" —
+  it names exactly which setting(s) to fix.
+- **A frontend request fails with a CORS error only when logged in** — see
+  the CSRF/cross-origin note in `docs/SECURITY.md`; check that
+  `CORS_ORIGINS` includes the frontend's exact origin.
 
 ## First Super Administrator
 
@@ -265,13 +363,12 @@ See `docs/KNOWN_LIMITATIONS.md`.
 ## Documentation
 
 - `docs/ROLE_GUIDE.md` — every role and what it can/cannot do.
-- `docs/FARMER_GUIDE.md`, `docs/DEALER_GUIDE.md`, `docs/STAFF_GUIDE.md`
+- `docs/FARMER_GUIDE.md`, `docs/DEALER_GUIDE.md`
+- `docs/STAFF_GUIDE.md` — product publishing, certificate
+  verification/upload, agriculture photo management, and farmer rating
+  moderation workflows.
 - `docs/PRODUCTION_CHECKLIST.md`
 - `docs/TEST_REPORT.md`
 - `docs/KNOWN_LIMITATIONS.md`
 - `docs/SECURITY.md`
 - `CHANGELOG.md`
-#   r o c k s t a r - o r g a n i c s  
- #   r o c k s t a r - o r g a n i c s  
- #   r o c k s t a r - o r g a n i c s  
- 

@@ -46,6 +46,8 @@ def assign_enquiry(enquiry_id: str, staff_id: str, user: User = Depends(require_
     e = db.get(Enquiry, enquiry_id)
     if not e:
         raise HTTPException(status_code=404, detail="Enquiry not found.")
+    if not db.get(User, staff_id):
+        raise HTTPException(status_code=404, detail="Staff member not found.")
     e.assigned_staff_id = staff_id
     e.status = "assigned"
     record_audit(db, actor_id=user.id, action="enquiry.assign", entity_type="enquiry", entity_id=e.id, summary=f"Enquiry {e.reference_number} assigned")
