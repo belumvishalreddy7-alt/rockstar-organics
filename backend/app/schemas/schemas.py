@@ -268,7 +268,11 @@ class EnquiryCreate(BaseModel):
 
 
 class ReviewCreate(BaseModel):
-    reviewer_name: str = Field(min_length=1, max_length=150)
+    # No reviewer_name here (deliberately) - it used to be free client-
+    # supplied text, which let a logged-in farmer post under any name they
+    # typed. The submitting farmer's own account name is used instead
+    # (see routers/reviews.py) so a review can never claim to be from
+    # someone it isn't.
     rating: int
     comment: str | None = Field(default=None, max_length=2000)
 
@@ -434,6 +438,7 @@ class CompanyDocumentCreate(BaseModel):
 
 class CompanyDocumentReview(BaseModel):
     notes: str | None = Field(default=None, max_length=2000)
+    rejection_reason: str | None = Field(default=None, max_length=2000)
 
 
 # ---------------------------------------------------------------------------
@@ -467,6 +472,10 @@ class AgriculturePhotoCreate(BaseModel):
         if v not in AGRICULTURE_PHOTO_CATEGORIES:
             raise ValueError(f"Category must be one of: {', '.join(sorted(AGRICULTURE_PHOTO_CATEGORIES))}.")
         return v
+
+
+class AgriculturePhotoStatusChange(BaseModel):
+    rejection_reason: str | None = Field(default=None, max_length=2000)
 
 
 # ---------------------------------------------------------------------------

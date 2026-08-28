@@ -95,6 +95,12 @@ jobs:
         working-directory: backend
         run: pip install -r requirements.txt
 
+      - name: Apply migrations
+        working-directory: backend
+        run: alembic upgrade head
+        env:
+          DATABASE_URL: sqlite:///./rockstar_organics.db
+
       - name: Start backend
         working-directory: backend
         run: |
@@ -104,6 +110,18 @@ jobs:
           ENVIRONMENT: test
           SECRET_KEY: ci-test-secret-key
           DEV_EXPOSE_RESET_TOKEN: "true"
+          DEV_EXPOSE_OTP: "true"
+
+      # Gives the e2e suite a known staff login (admin.demo@example.com) so
+      # it can exercise admin-only flows (certificate verification, photo
+      # approval, review moderation) - refuses to run outside
+      # ENVIRONMENT=production, so this is a no-op risk in real deployments.
+      - name: Seed demo accounts for e2e admin flows
+        working-directory: backend
+        run: python -m scripts.seed_demo_accounts
+        env:
+          ENVIRONMENT: test
+          DATABASE_URL: sqlite:///./rockstar_organics.db
 
       - uses: actions/setup-node@v4
         with:

@@ -113,9 +113,13 @@ def test_review_comment_length_is_capped(client, super_admin):
     client.post(f"/api/v1/products/{pid}/transition/published", json={})
     client.post("/api/v1/auth/logout")
 
+    client.post("/api/v1/auth/register", json={
+        "full_name": "Cap Reviewer", "email": "capreviewer@example.com", "phone": "9876543247", "password": "Passw0rd123",
+    })
     huge_comment = "x" * 3000  # over the 2000-char cap
-    r = client.post(f"/api/v1/reviews/products/{pid}", json={"reviewer_name": "Y", "rating": 5, "comment": huge_comment})
+    r = client.post(f"/api/v1/reviews/products/{pid}", json={"rating": 5, "comment": huge_comment})
     assert r.status_code == 422
+    client.post("/api/v1/auth/logout")
 
 
 def test_enquiry_requires_explicit_consent(client):

@@ -58,15 +58,20 @@ test.describe("authentication", () => {
 
   test("forgot-password never silently appears to succeed with no feedback", async ({ page }) => {
     // This test environment has no real email provider configured, so
-    // email_sent comes back false even for a real account - the point is
-    // that the UI says so honestly (in addition to the generic message)
-    // instead of just showing "a reset link has been generated" and
-    // leaving the user to wait forever for an email that will never come.
+    // email_sent always comes back false. If DEV_EXPOSE_RESET_TOKEN is on
+    // (true here and in CI), the UI shows a working dev link instead of
+    // the "could not confirm delivery" note - showing both would be
+    // redundant, so ForgotPassword.tsx deliberately suppresses the latter
+    // whenever a dev link is available (see its `!devToken` guard). Either
+    // way the user always gets *some* real, honest next step - that's
+    // what this test checks, not which exact one.
     await page.goto("/forgot-password");
     await page.getByLabel(/email/i).fill(uniqueEmail);
     await page.getByRole("button", { name: /send reset link/i }).click();
     await expect(page.getByText(/reset link has been generated/i)).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText(/could not confirm email delivery/i)).toBeVisible();
+    const devLink = page.getByRole("link", { name: /use this reset link/i });
+    const uncertainNote = page.getByText(/could not confirm email delivery/i);
+    await expect(devLink.or(uncertainNote)).toBeVisible();
   });
 });
 
@@ -117,5 +122,147 @@ test.describe("real-world content pass", () => {
     await page.goto("/gallery");
     await expect(page.getByRole("heading", { name: /gallery/i })).toBeVisible();
     expect(errors).toEqual([]);
+  });
+});
+
+// These tests need a Super Administrator account - `python -m
+// scripts.seed_demo_accounts` (refuses to run outside ENVIRONMENT=production)
+// creates admin.demo@example.com / AdminDemo123!, see .github/workflows/ci.yml's
+// e2e-tests job. Running this file locally without seeding first will fail
+// only this describe block - the rest of the suite doesn't need it.
+test.describe("admin verification workflows", () => {
+  const ADMIN_EMAIL = "admin.demo@example.com";
+  const ADMIN_PASSWORD = "AdminDemo123!";
+
+  async function loginAsAdmin(page: import("@playwright/test").Page) {
+    await page.goto("/login");
+    await page.getByLabel(/^email/i).fill(ADMIN_EMAIL);
+    await page.getByLabel(/^password/i).fill(ADMIN_PASSWORD);
+    await page.getByRole("button", { name: /sign in/i }).click();
+    await expect(page).toHaveURL(/\/staff/, { timeout: 10_000 });
+  }
+
+  test("farmer submits a rating, staff approves it, and it appears on the public product page", async ({ page, request, baseURL }) => {
+    // Product creation/publication isn't exercised through the UI
+    // elsewhere in this suite - drive it directly via the API (same
+    // approach the backend's own pytest suite uses) so this test can
+    // focus on the review lifecycle itself.
+    const admin = await request.post(`${baseURL}/api/v1/auth/login`, { data: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD } });
+    expect(admin.ok()).toBeTruthy();
+    const csrf = admin.headers()["x-csrf-token"];
+    const suffix = Date.now();
+    const product = await request.post(`${baseURL}/api/v1/products`, {
+      headers: { "x-csrf-token": csrf },
+      data: { sku: `SKU-E2E-${suffix}`, name: "E2E Reviewed Product", slug: `e2e-reviewed-${suffix}`, precautions: "x", full_description: "x" },
+    });
+    expect(product.ok()).toBeTruthy();
+    const productId = (await product.json()).id;
+    const category = await request.post(`${baseURL}/api/v1/categories`, { headers: { "x-csrf-token": csrf }, data: { name: `E2E Cat ${suffix}`, slug: `e2e-cat-${suffix}` } });
+    expect(category.ok()).toBeTruthy();
+    const categoryId = (await category.json()).id;
+    const updated = await request.put(`${baseURL}/api/v1/products/${productId}`, {
+      headers: { "x-csrf-token": csrf },
+      data: { sku: `SKU-E2E-${suffix}`, name: "E2E Reviewed Product", slug: `e2e-reviewed-${suffix}`, category_id: categoryId, precautions: "x", full_description: "x" },
+    });
+    expect(updated.ok()).toBeTruthy();
+    for (const status of ["in_review", "approved", "published"]) {
+      const transition = await request.post(`${baseURL}/api/v1/products/${productId}/transition/${status}`, { headers: { "x-csrf-token": csrf }, data: {} });
+      expect(transition.ok()).toBeTruthy();
+    }
+    await request.post(`${baseURL}/api/v1/auth/logout`, { headers: { "x-csrf-token": csrf } });
+
+    // Farmer signs up (fresh browser session) and submits a rating. The
+    // name is suffixed so repeated local test runs (which each leave a
+    // pending review behind if a later step fails) never collide when
+    // scoping locators to "this run's" review below.
+    const reviewerName = `Playwright Reviewer ${suffix}`;
+    await page.goto("/signup");
+    await page.getByLabel(/full name/i).fill(reviewerName);
+    await page.getByLabel(/^email/i).fill(`e2e-reviewer-${suffix}@example.com`);
+    await page.getByLabel(/phone/i).fill("9876543217");
+    await page.getByLabel(/^password/i).fill("CorrectHorseBattery9!");
+    await page.getByRole("button", { name: /send verification code/i }).click();
+    const devCode = page.getByText(/your code is/i);
+    await expect(devCode).toBeVisible({ timeout: 10_000 });
+    const code = (await devCode.textContent())?.match(/(\d{6})/)?.[1];
+    await page.getByLabel(/verification code/i).fill(code!);
+    await page.getByRole("button", { name: /verify and create account/i }).click();
+    await expect(page).toHaveURL(/\/farmer/, { timeout: 10_000 });
+
+    await page.goto(`/products/e2e-reviewed-${suffix}`);
+    await expect(page.getByText(/no farmer reviews are available yet/i)).toBeVisible();
+    await page.getByLabel(/rating/i).selectOption("5");
+    await page.getByRole("button", { name: /submit rating/i }).click();
+    await expect(page.getByText(/thank you/i)).toBeVisible({ timeout: 10_000 });
+
+    // Staff logs in, sees it pending, approves it.
+    await loginAsAdmin(page);
+    await page.goto("/staff/reviews");
+    const reviewCard = page.getByText(reviewerName).locator("..").locator("..");
+    await expect(reviewCard.getByRole("button", { name: /^approve$/i })).toBeVisible({ timeout: 10_000 });
+    await reviewCard.getByRole("button", { name: /^approve$/i }).click();
+    await expect(page.getByText(reviewerName)).toHaveCount(0, { timeout: 10_000 });
+
+    // Public product page now shows it.
+    await page.goto(`/products/e2e-reviewed-${suffix}`);
+    await expect(page.getByText(/5\.0 average from 1 verified farmer review/i)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(reviewerName)).toBeVisible();
+  });
+
+  test("staff can verify, approve, and publish a certificate through the full workflow", async ({ page }) => {
+    await loginAsAdmin(page);
+    await page.goto("/staff/documents");
+
+    const suffix = Date.now();
+    await page.getByLabel(/title/i).fill(`E2E Certificate ${suffix}`);
+    await page.setInputFiles("#doc-file", { name: "cert.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 e2e test certificate") });
+    await page.getByRole("button", { name: /^upload$/i }).click();
+    await expect(page.getByText(`E2E Certificate ${suffix}`)).toBeVisible({ timeout: 10_000 });
+
+    const row = page.getByRole("row").filter({ hasText: `E2E Certificate ${suffix}` });
+    await row.getByRole("button", { name: /^verify$/i }).click();
+    await expect(row.getByRole("button", { name: /^approve$/i })).toBeVisible({ timeout: 10_000 });
+    await row.getByRole("button", { name: /^approve$/i }).click();
+    await expect(row.getByRole("button", { name: /^publish$/i })).toBeVisible({ timeout: 10_000 });
+    await row.getByRole("button", { name: /^publish$/i }).click();
+    await expect(row.getByRole("button", { name: /^unpublish$/i })).toBeVisible({ timeout: 10_000 });
+
+    await page.goto("/certificates");
+    await expect(page.getByText(`E2E Certificate ${suffix}`)).toBeVisible({ timeout: 10_000 });
+  });
+
+  test("staff can approve and publish an agriculture photo", async ({ page }) => {
+    await loginAsAdmin(page);
+    await page.goto("/staff/gallery");
+
+    const suffix = Date.now();
+    await page.getByLabel(/^title$/i).fill(`E2E Field Photo ${suffix}`);
+    await page.getByLabel(/alt text/i).fill("A field photographed for an automated test.");
+    await page.getByLabel(/usage rights verified/i).check();
+    await page.setInputFiles("#photo-file", { name: "field.jpg", mimeType: "image/jpeg", buffer: Buffer.from([0xff, 0xd8, 0xff, 0xe0]) });
+    await page.getByRole("button", { name: /^upload$/i }).click();
+    await expect(page.getByText(`E2E Field Photo ${suffix}`)).toBeVisible({ timeout: 10_000 });
+
+    const row = page.getByRole("row").filter({ hasText: `E2E Field Photo ${suffix}` });
+    await row.getByRole("button", { name: /^approve$/i }).click();
+    await expect(row.getByRole("button", { name: /^publish$/i })).toBeVisible({ timeout: 10_000 });
+    await row.getByRole("button", { name: /^publish$/i }).click();
+
+    await page.goto("/gallery");
+    await expect(page.getByText(`E2E Field Photo ${suffix}`)).toBeVisible({ timeout: 10_000 });
+  });
+
+  test("a farmer is blocked from the staff dashboard", async ({ page }) => {
+    const suffix = Date.now();
+    await page.goto("/register");
+    await page.getByLabel(/full name/i).fill("E2E Unauthorized Farmer");
+    await page.getByLabel(/^email/i).fill(`e2e-unauth-${suffix}@example.com`);
+    await page.getByLabel(/phone/i).fill("9876543218");
+    await page.getByLabel(/^password/i).fill("CorrectHorseBattery9!");
+    await page.getByRole("button", { name: /create account/i }).click();
+    await expect(page).toHaveURL(/\/farmer/, { timeout: 10_000 });
+
+    await page.goto("/staff");
+    await expect(page).toHaveURL(/\/403/, { timeout: 10_000 });
   });
 });

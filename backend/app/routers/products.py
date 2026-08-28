@@ -24,23 +24,42 @@ VALID_TRANSITIONS = {
 }
 
 
+def _empty_rating_summary() -> dict:
+    return {"average_rating": None, "approved_review_count": 0, "rating_breakdown": {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0}}
+
+
 def _rating_summaries(db: Session, product_ids: list[str]) -> dict[str, dict]:
     """One aggregate query for a whole page of products instead of one
     query per row - a page of `page_size=100` used to issue 100+ extra
     round trips here (plus one lazy `p.images` load per row), which
     matters once the database moves off a co-located instance to a
-    networked one with real per-query latency."""
-    summaries: dict[str, dict] = {pid: {"average_rating": None, "approved_review_count": 0} for pid in product_ids}
+    networked one with real per-query latency. `rating_breakdown` is the
+    1-5 star count distribution among approved reviews only - a pending/
+    rejected/spam review never affects the public numbers."""
+    summaries: dict[str, dict] = {pid: _empty_rating_summary() for pid in product_ids}
     if not product_ids:
         return summaries
-    rows = (
+
+    totals = (
         db.query(ProductReview.product_id, func.avg(ProductReview.rating), func.count(ProductReview.id))
         .filter(ProductReview.product_id.in_(product_ids), ProductReview.status == "approved")
         .group_by(ProductReview.product_id)
         .all()
     )
-    for pid, avg, count in rows:
-        summaries[pid] = {"average_rating": round(float(avg), 2) if avg else None, "approved_review_count": count or 0}
+    for pid, avg, count in totals:
+        summaries[pid]["average_rating"] = round(float(avg), 2) if avg else None
+        summaries[pid]["approved_review_count"] = count or 0
+
+    breakdown_rows = (
+        db.query(ProductReview.product_id, ProductReview.rating, func.count(ProductReview.id))
+        .filter(ProductReview.product_id.in_(product_ids), ProductReview.status == "approved")
+        .group_by(ProductReview.product_id, ProductReview.rating)
+        .all()
+    )
+    for pid, rating, count in breakdown_rows:
+        if 1 <= rating <= 5:
+            summaries[pid]["rating_breakdown"][str(rating)] = count or 0
+
     return summaries
 
 

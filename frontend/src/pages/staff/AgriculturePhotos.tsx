@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { api, uploadFile, mediaUrl } from "../../api/client";
+import { api, ApiError, uploadFile, mediaUrl } from "../../api/client";
 import { EmptyState } from "../../components/EmptyState";
 import { StatusBadge } from "../../components/StatusBadge";
 
 interface PhotoRow {
-  id: string; title: string; category: string; status: string; usage_rights_verified: boolean; image_url: string;
+  id: string; title: string; category: string; status: string; usage_rights_verified: boolean;
+  rejection_reason: string | null; image_url: string;
 }
 
 const CATEGORIES = [
@@ -48,9 +49,13 @@ export function AgriculturePhotos() {
     onError: (e: unknown) => setMessage(e instanceof Error ? e.message : "Upload failed."),
   });
 
+  const [actionError, setActionError] = useState<string | null>(null);
+
   const changeStatus = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) => api.post(`/media/agriculture/${id}/status/${status}`, {}),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["agriculture-photos-admin"] }),
+    mutationFn: ({ id, status, rejection_reason }: { id: string; status: string; rejection_reason?: string }) =>
+      api.post(`/media/agriculture/${id}/status/${status}`, rejection_reason ? { rejection_reason } : {}),
+    onSuccess: () => { setActionError(null); qc.invalidateQueries({ queryKey: ["agriculture-photos-admin"] }); },
+    onError: (e: unknown) => setActionError(e instanceof ApiError ? e.message : "Action failed."),
   });
 
   return (
@@ -86,6 +91,7 @@ export function AgriculturePhotos() {
         </form>
       </div>
 
+      {actionError && <div className="alert alert-error">{actionError}</div>}
       {isLoading && <div className="loading-state">Loading photos...</div>}
       {data && data.length === 0 && <EmptyState title="No photos uploaded yet." />}
       {data && data.length > 0 && (
@@ -96,14 +102,36 @@ export function AgriculturePhotos() {
               {data.map((p) => (
                 <tr key={p.id}>
                   <td><img src={mediaUrl(p.image_url)} alt={p.title} style={{ width: 60, height: 40, objectFit: "cover", borderRadius: 4 }} /></td>
-                  <td>{p.title}</td><td>{p.category.replace(/_/g, " ")}</td>
+                  <td>
+                    {p.title}
+                    {p.rejection_reason && <p className="small muted">Rejected: {p.rejection_reason}</p>}
+                  </td>
+                  <td>{p.category.replace(/_/g, " ")}</td>
                   <td><StatusBadge status={p.status} /></td>
                   <td>{p.usage_rights_verified ? "Yes" : "No"}</td>
                   <td className="inline">
-                    {p.status !== "under_review" && <button className="btn btn-ghost btn-sm" onClick={() => changeStatus.mutate({ id: p.id, status: "under_review" })}>Under review</button>}
-                    {p.status !== "approved" && <button className="btn btn-primary btn-sm" onClick={() => changeStatus.mutate({ id: p.id, status: "approved" })}>Approve</button>}
-                    {p.status !== "published" && <button className="btn btn-primary btn-sm" onClick={() => changeStatus.mutate({ id: p.id, status: "published" })}>Publish</button>}
+                    {p.status !== "under_review" && p.status !== "published" && (
+                      <button className="btn btn-ghost btn-sm" onClick={() => changeStatus.mutate({ id: p.id, status: "under_review" })}>Under review</button>
+                    )}
+                    {p.status !== "approved" && p.status !== "published" && (
+                      <button className="btn btn-primary btn-sm" onClick={() => changeStatus.mutate({ id: p.id, status: "approved" })}>Approve</button>
+                    )}
+                    {p.status !== "rejected" && p.status !== "published" && (
+                      <button
+                        className="btn btn-danger btn-sm"
+                        onClick={() => {
+                          const reason = window.prompt("Reason for rejecting this photo:") || "";
+                          changeStatus.mutate({ id: p.id, status: "rejected", rejection_reason: reason });
+                        }}
+                      >
+                        Reject
+                      </button>
+                    )}
+                    {p.status === "approved" && (
+                      <button className="btn btn-primary btn-sm" onClick={() => changeStatus.mutate({ id: p.id, status: "published" })}>Publish</button>
+                    )}
                     {p.status !== "archived" && <button className="btn btn-ghost btn-sm" onClick={() => changeStatus.mutate({ id: p.id, status: "archived" })}>Archive</button>}
+                    {p.status === "archived" && <button className="btn btn-ghost btn-sm" onClick={() => changeStatus.mutate({ id: p.id, status: "draft" })}>Restore to draft</button>}
                   </td>
                 </tr>
               ))}

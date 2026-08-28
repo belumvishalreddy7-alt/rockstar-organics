@@ -136,9 +136,19 @@ def test_company_document_lifecycle(client, super_admin):
     assert verify.status_code == 200
     assert verify.json()["verification_status"] == "verified"
 
+    # Verified alone is not enough to publish - an administrator must also
+    # approve it (a separate gate from the content-verifier's fact-check).
+    early_publish2 = client.post(f"/api/v1/company/documents/{doc_id}/publish")
+    assert early_publish2.status_code == 400
+
+    approve = client.post(f"/api/v1/company/documents/{doc_id}/approve")
+    assert approve.status_code == 200
+    assert approve.json()["is_approved"] is True
+
     publish = client.post(f"/api/v1/company/documents/{doc_id}/publish")
     assert publish.status_code == 200
     assert publish.json()["is_published"] is True
+    assert publish.json()["published_by_id"] == uid
 
     public2 = client.get("/api/v1/company/documents")
     assert doc_id in [d["id"] for d in public2.json()]
@@ -147,6 +157,15 @@ def test_company_document_lifecycle(client, super_admin):
     client.post("/api/v1/auth/logout")
     download = client.get(f"/api/v1/media/certificates/{doc_id}")
     assert download.status_code == 200
+
+    # Archiving pulls it back off the public site even though it's still
+    # verified/approved.
+    client.post("/api/v1/auth/login", json={"email": email, "password": password})
+    archive = client.post(f"/api/v1/company/documents/{doc_id}/archive")
+    assert archive.status_code == 200
+    assert archive.json()["is_archived"] is True
+    public3 = client.get("/api/v1/company/documents")
+    assert doc_id not in [d["id"] for d in public3.json()]
 
 
 def test_agriculture_photo_requires_usage_rights_to_publish(client, super_admin):
@@ -182,8 +201,19 @@ def test_agriculture_photo_requires_usage_rights_to_publish(client, super_admin)
         "media_id": media_id, "usage_rights_verified": True,
     })
     photo_id2 = create2.json()["id"]
+
+    # Publishing still requires an explicit "approved" step first, even
+    # with usage rights verified - approval and publication are distinct.
+    early_publish = client.post(f"/api/v1/media/agriculture/{photo_id2}/status/published")
+    assert early_publish.status_code == 400
+
+    approve = client.post(f"/api/v1/media/agriculture/{photo_id2}/status/approved")
+    assert approve.status_code == 200
+    assert approve.json()["approved_by_id"] == uid
+
     publish = client.post(f"/api/v1/media/agriculture/{photo_id2}/status/published")
     assert publish.status_code == 200
+    assert publish.json()["published_by_id"] == uid
 
     client.post("/api/v1/auth/logout")
     public = client.get("/api/v1/media/agriculture")

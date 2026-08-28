@@ -256,15 +256,23 @@ class ProductReview(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
     product_id: Mapped[str] = mapped_column(String(32), ForeignKey("products.id"), nullable=False)
+    # Nullable at the DB level for backward compatibility with any existing
+    # anonymous reviews (never destructively altered by a migration - see
+    # docs/PRODUCTION_CHECKLIST.md), but enforced NOT NULL at the API layer:
+    # only an authenticated farmer may submit a new review (see
+    # routers/reviews.py), and reviewer_name is derived from the account,
+    # never client-supplied free text, so it can't be spoofed to
+    # impersonate someone else.
     user_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("users.id"), nullable=True)
     reviewer_name: Mapped[str] = mapped_column(String(150), nullable=False)
     rating: Mapped[int] = mapped_column(Integer, nullable=False)
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
-    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending|approved|rejected|spam
+    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending|under_review|approved|rejected|spam
     moderator_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("users.id"), nullable=True)
     moderator_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     moderated_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
 
     product: Mapped["Product"] = relationship(back_populates="reviews")
 
@@ -619,6 +627,23 @@ class CompanyDocument(Base):
     uploaded_by_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("users.id"), nullable=True)
     reviewed_by_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("users.id"), nullable=True)
     reviewed_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    # Extends the uploaded -> under_review -> verified/rejected -> published
+    # lifecycle above with an explicit approval gate before publish, and
+    # full submitted/rejected/approved/archived provenance - see
+    # docs/SECURITY.md "Certificate verification workflow". Additive to the
+    # fields above rather than replacing them, so existing verification_status/
+    # is_published consumers keep working unchanged.
+    submitted_by_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("users.id"), nullable=True)
+    submitted_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_approved: Mapped[bool] = mapped_column(Boolean, default=False)
+    approved_by_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("users.id"), nullable=True)
+    approved_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    published_by_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("users.id"), nullable=True)
+    published_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    archived_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
 
@@ -652,8 +677,16 @@ class AgriculturePhoto(Base):
     alt_text: Mapped[str] = mapped_column(String(300), nullable=False)
     media_id: Mapped[str] = mapped_column(String(32), ForeignKey("media_records.id"), nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="draft")
-    # draft | under_review | approved | published | archived
+    # draft | submitted | under_review | approved | rejected | published | archived
     uploaded_by_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("users.id"), nullable=True)
     reviewed_by_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("users.id"), nullable=True)
+    submitted_by_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("users.id"), nullable=True)
+    submitted_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    approved_by_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("users.id"), nullable=True)
+    approved_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    published_by_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("users.id"), nullable=True)
+    published_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
