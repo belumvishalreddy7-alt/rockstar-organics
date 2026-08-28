@@ -1,6 +1,7 @@
 import datetime as dt
 import hmac
 import secrets
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
@@ -11,7 +12,8 @@ from app.core.csrf import csrf_cookie_kwargs, expose_csrf_token, mirror_csrf_coo
 from app.core.database import get_db
 from app.core.deps import create_session_value, get_current_user, require_user
 from app.core.email import otp_email, password_reset_email, send_email, welcome_email
-from app.core.permissions import ROLE_FARMER
+from app.core.notify import notify
+from app.core.permissions import ROLE_DEALER, ROLE_DISTRIBUTOR, ROLE_FARMER, ROLE_SUPER_ADMIN
 from app.core.rate_limit import rate_limiter
 from app.core.security import (
     generate_token,
@@ -37,6 +39,38 @@ router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 settings = get_settings()
 
 GENERIC_LOGIN_ERROR = "Incorrect email or password."
+
+# Roles whose sign-ins the owner (super_admin) is notified about - staff and
+# super_admin's own logins are not, since those are the owner's own team,
+# not the outside parties this notification is for.
+NOTIFY_OWNER_ON_LOGIN_ROLES = {ROLE_FARMER, ROLE_DEALER, ROLE_DISTRIBUTOR}
+
+
+def _rotate_session_version(db: Session, user: User) -> None:
+    """Generates a fresh session marker and persists it before the next
+    session cookie is issued - enforces a single active session per
+    account (see deps.get_current_user): any token issued before this
+    commit, including one still active in another browser or device,
+    stops authenticating the instant this lands, with no server-side
+    session store required since the marker travels inside the signed
+    token itself."""
+    user.session_version = uuid.uuid4().hex
+    db.commit()
+
+
+def _notify_owner_of_login(db: Session, user: User) -> None:
+    if user.role not in NOTIFY_OWNER_ON_LOGIN_ROLES:
+        return
+    owners = db.query(User).filter(User.role == ROLE_SUPER_ADMIN).all()
+    for owner in owners:
+        notify(
+            db, recipient_id=owner.id, type="user_login",
+            title=f"{user.role.replace('_', ' ').title()} signed in",
+            message=f"{user.full_name} ({user.email}) signed in.",
+            related_entity_type="user", related_entity_id=user.id,
+        )
+    if owners:
+        db.commit()
 
 
 def _issue_session(response: Response, user: User) -> None:
@@ -87,6 +121,7 @@ def register_farmer(payload: RegisterFarmerRequest, request: Request, response: 
                  summary=f"Farmer account registered: {user.email}")
     db.commit()
     db.refresh(user)
+    _rotate_session_version(db, user)
     _issue_session(response, user)
 
     html, text = welcome_email(user.full_name, "Farmer")
@@ -192,6 +227,7 @@ def verify_otp(payload: VerifyOtpRequest, response: Response, db: Session = Depe
                  summary=f"Account created via OTP-verified signup: {user.email}")
     db.commit()
     db.refresh(user)
+    _rotate_session_version(db, user)
     _issue_session(response, user)
 
     html, text = welcome_email(user.full_name, "Farmer")
@@ -217,6 +253,8 @@ def login(payload: LoginRequest, request: Request, response: Response, db: Sessi
                  ip_address=request.client.host if request.client else None,
                  user_agent=request.headers.get("user-agent"))
     db.commit()
+    _notify_owner_of_login(db, user)
+    _rotate_session_version(db, user)
     _issue_session(response, user)
     return user
 
@@ -265,6 +303,7 @@ def change_password(payload: ChangePasswordRequest, response: Response, user: Us
                  summary="Password changed by user")
     db.commit()
     db.refresh(user)
+    _rotate_session_version(db, user)
     _issue_session(response, user)  # old sessions/tokens are now invalid; reissue this one
     return user
 

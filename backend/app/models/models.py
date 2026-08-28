@@ -58,6 +58,16 @@ class User(Base):
     # stateless - this is what makes "reset your password" actually log out
     # anyone who had a stolen session.
     password_changed_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
+    # Nullable, no backfill needed: a session token issued before this
+    # column existed simply carries no "sv" claim, and get_current_user
+    # treats that as "not yet enforced" until the user's next login sets a
+    # real value - see deps.py. Regenerated on every successful login
+    # (auth.py's _rotate_session_version), which is what enforces "only
+    # one active session per account" - any token carrying the previous
+    # value (including one still active in another browser/device) is
+    # rejected from that moment on, with no server-side session store
+    # needed since the marker travels inside the signed token itself.
+    session_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
 

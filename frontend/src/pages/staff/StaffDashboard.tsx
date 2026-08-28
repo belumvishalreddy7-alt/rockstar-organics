@@ -1,12 +1,17 @@
 import { Link, Outlet, useLocation } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
+import { EmptyState } from "../../components/EmptyState";
 
 interface Metrics {
   draft_products: number; products_in_review: number; published_products: number; new_dealer_applications: number;
   open_support_cases: number; high_priority_cases: number; upcoming_field_visits: number; pending_reviews: number;
   open_enquiries: number; overdue_tasks: number; published_knowledge_articles: number; failed_notifications: number;
+}
+
+interface NotificationOut {
+  id: string; type: string; title: string; message: string; is_read: boolean; created_at: string;
 }
 
 export function StaffDashboardLayout() {
@@ -64,7 +69,39 @@ function Overview() {
           <div className="metric-tile" key={label}><div className="value">{value}</div><div className="label">{label}</div></div>
         ))}
       </div>
+      <Notifications />
     </>
+  );
+}
+
+function Notifications() {
+  const qc = useQueryClient();
+  const { data, isLoading } = useQuery({ queryKey: ["notifications"], queryFn: () => api.get<NotificationOut[]>("/notifications") });
+  const markRead = useMutation({
+    mutationFn: (id: string) => api.post(`/notifications/${id}/read`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
+  });
+  const unreadCount = data?.filter((n) => !n.is_read).length ?? 0;
+
+  return (
+    <div className="panel">
+      <div className="section-heading">
+        <h2>Notifications{unreadCount > 0 ? ` (${unreadCount} unread)` : ""}</h2>
+      </div>
+      {isLoading && <div className="loading-state">Loading notifications...</div>}
+      {data && data.length === 0 && <EmptyState title="No notifications yet." />}
+      {data && data.length > 0 && (
+        <ul>
+          {data.map((n) => (
+            <li key={n.id} style={{ fontWeight: n.is_read ? "normal" : 600 }}>
+              {n.title} - {n.message}
+              <span className="muted"> ({new Date(n.created_at).toLocaleString()})</span>
+              {!n.is_read && <button className="btn btn-ghost btn-sm" onClick={() => markRead.mutate(n.id)}>Mark read</button>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 

@@ -20,7 +20,7 @@ def _password_stamp(user: User) -> str:
 
 
 def create_session_value(user: User) -> str:
-    return _serializer.dumps({"uid": user.id, "pw": _password_stamp(user)})
+    return _serializer.dumps({"uid": user.id, "pw": _password_stamp(user), "sv": user.session_version})
 
 
 def read_session_payload(value: str) -> dict | None:
@@ -44,6 +44,11 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User | 
         return None
     if payload.get("pw") != _password_stamp(user):
         # Password changed since this session was issued - reject it.
+        return None
+    if user.session_version is not None and payload.get("sv") != user.session_version:
+        # A newer login (possibly on another device) has rotated the
+        # session marker since this token was issued - only one session
+        # is allowed to be active per account, so this one loses.
         return None
     return user
 
