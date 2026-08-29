@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../api/client";
 import { EmptyState } from "../../components/EmptyState";
+import { LocationMap } from "../../components/LocationMap";
 
 interface DealerEntry {
   id: string; business_name: string; district: string;
@@ -30,6 +31,17 @@ export function DealerDirectory() {
         <EmptyState title="No participating dealers found for this search.">
           <p className="small">Try a different district, or check back later as more dealers join the directory.</p>
         </EmptyState>
+      )}
+      {data && data.length > 0 && (
+        <div className="panel" style={{ marginBottom: 16 }}>
+          <h2>Dealer locations</h2>
+          <p className="small muted">Approximate, based on each dealer&#8217;s registered district.</p>
+          <LocationMap
+            locations={data.map((d) => ({ label: d.business_name, query: `${d.district}, Telangana, India` }))}
+            fallbackQuery="Ranga Reddy district, Telangana, India"
+            fallbackLabel="Rockstar Organics service region"
+          />
+        </div>
       )}
       <div className="grid cols-2">
         {data?.map((d) => (

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { api, ApiError } from "../../api/client";
+import { LocationMap } from "../../components/LocationMap";
 
 interface FormState {
   contact_person: string; business_name: string; email: string; phone: string; territory: string;
@@ -33,6 +34,18 @@ export function Distributors() {
   return (
     <div className="container page-section">
       <h1>Distributors</h1>
+      <div className="panel" style={{ marginBottom: 16 }}>
+        <h2>Distribution network</h2>
+        <p className="small muted">
+          There is no public distributor directory yet, so individual distributor locations are not shown here.
+          The map below marks our confirmed service region.
+        </p>
+        <LocationMap
+          locations={[]}
+          fallbackQuery="Ranga Reddy district, Telangana, India"
+          fallbackLabel="Rockstar Organics service region"
+        />
+      </div>
       <div className="grid cols-2">
         <div className="panel">
           <h2>Programme overview</h2>
