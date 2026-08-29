@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api, ApiError, mediaUrl } from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
+import { useDocumentTitle } from "../../hooks/useDocumentTitle";
 
 interface ReviewItem { id: string; reviewer_name: string; rating: number; comment: string | null; created_at: string; }
 interface RatingBreakdown { "1": number; "2": number; "3": number; "4": number; "5": number; }
@@ -36,6 +37,8 @@ export function ProductDetail() {
     },
     onError: (e: unknown) => setError(e instanceof ApiError ? e.message : "Something went wrong."),
   });
+
+  useDocumentTitle(data ? `${data.name} | Rockstar Organics` : "Product | Rockstar Organics");
 
   if (isLoading) return <div className="container page-section loading-state">Loading product...</div>;
   if (isError || !data) return <div className="container page-section"><div className="alert alert-error">Product not found or not published.</div></div>;

@@ -29,6 +29,7 @@ from app.routers import (
     distributors,
     enquiries,
     cases,
+    farmers,
     knowledge,
     media,
     notifications,
@@ -201,6 +202,7 @@ app.include_router(auth.router)
 app.include_router(products.router)
 app.include_router(categories.router)
 app.include_router(dealers.router)
+app.include_router(farmers.router)
 app.include_router(cases.router)
 app.include_router(visits.router)
 app.include_router(enquiries.router)

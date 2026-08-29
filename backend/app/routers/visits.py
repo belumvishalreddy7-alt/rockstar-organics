@@ -5,7 +5,7 @@ from app.core.audit import record_audit
 from app.core.database import get_db
 from app.core.deps import require_roles, require_user
 from app.core.notify import notify
-from app.core.permissions import CASE_MANAGERS, ROLE_FARMER
+from app.core.permissions import CASE_MANAGERS, ROLE_FARMER, ROLE_FIELD_OFFICER
 from app.core.references import generate_reference
 from app.models.models import FarmerSupportCase, FieldVisit, FollowUpTask, User
 from app.schemas.schemas import FieldVisitComplete, FieldVisitCreate, FieldVisitSchedule
@@ -46,6 +46,34 @@ def my_visits(user: User = Depends(require_roles(ROLE_FARMER)), db: Session = De
     visits = db.query(FieldVisit).filter(FieldVisit.farmer_id == user.id).order_by(FieldVisit.created_at.desc()).all()
     return [{"id": v.id, "reference_number": v.reference_number, "status": v.status,
              "scheduled_start": v.scheduled_start.isoformat() if v.scheduled_start else None} for v in visits]
+
+
+@router.get("/assigned-to-me")
+def my_assigned_visits(status: str | None = None, user: User = Depends(require_roles(ROLE_FIELD_OFFICER, *CASE_MANAGERS)),
+                        db: Session = Depends(get_db)):
+    """A field officer's own dashboard view - unlike list_visits (every
+    visit, staff-wide), this is scoped to visits assigned specifically to
+    the caller, so a field officer sees their own schedule rather than
+    everyone's."""
+    query = db.query(FieldVisit).filter(FieldVisit.assigned_officer_id == user.id)
+    if status:
+        query = query.filter(FieldVisit.status == status)
+    visits = query.order_by(FieldVisit.scheduled_start.asc().nulls_last()).all()
+    out = []
+    for v in visits:
+        case = db.get(FarmerSupportCase, v.case_id)
+        farmer = db.get(User, v.farmer_id)
+        out.append({
+            "id": v.id, "reference_number": v.reference_number, "status": v.status,
+            "purpose": v.purpose, "scheduled_start": v.scheduled_start.isoformat() if v.scheduled_start else None,
+            "scheduled_end": v.scheduled_end.isoformat() if v.scheduled_end else None,
+            "internal_instructions": v.internal_instructions, "farmer_instructions": v.farmer_instructions,
+            "follow_up_required": v.follow_up_required,
+            "case_reference": case.reference_number if case else None,
+            "case_title": case.title if case else None,
+            "farmer_name": farmer.full_name if farmer else None,
+        })
+    return out
 
 
 @router.post("/{visit_id}/schedule")

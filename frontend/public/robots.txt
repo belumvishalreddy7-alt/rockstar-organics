@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Disallow: /staff
+Disallow: /farmer
+Disallow: /dealer
+Disallow: /distributor
+Disallow: /change-password
+Disallow: /reset-password
+
+Sitemap: https://rockstar-organics.vercel.app/sitemap.xml

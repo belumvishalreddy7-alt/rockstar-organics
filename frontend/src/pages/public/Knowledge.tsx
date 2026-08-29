@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../../api/client";
 import { EmptyState } from "../../components/EmptyState";
+import { useDocumentTitle } from "../../hooks/useDocumentTitle";
 
 interface ArticleSummary { id: string; title: string; slug: string; summary: string | null; topic: string | null; }
 interface ArticleDetail extends ArticleSummary { body: string; crops: string | null; region: string | null; disclaimer: string; published_date: string | null; }
@@ -33,6 +34,7 @@ export function Knowledge() {
 export function KnowledgeDetail() {
   const { slug } = useParams();
   const { data, isLoading, isError } = useQuery({ queryKey: ["knowledge-detail", slug], queryFn: () => api.get<ArticleDetail>(`/knowledge/public/${slug}`) });
+  useDocumentTitle(data ? `${data.title} | Rockstar Organics` : "Knowledge Article | Rockstar Organics");
   if (isLoading) return <div className="container page-section loading-state">Loading article...</div>;
   if (isError || !data) return <div className="container page-section"><div className="alert alert-error">Article not found.</div></div>;
   return (

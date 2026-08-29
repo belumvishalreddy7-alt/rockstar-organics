@@ -19,6 +19,7 @@ export function FarmerDashboardLayout() {
           <Link className={location.pathname === "/farmer" ? "active" : ""} to="/farmer">My cases</Link>
           <Link className={location.pathname === "/farmer/visits" ? "active" : ""} to="/farmer/visits">My field visits</Link>
           <Link className={location.pathname === "/farmer/cases/new" ? "active" : ""} to="/farmer/cases/new">Submit new case</Link>
+          <Link className={location.pathname === "/farmer/profile" ? "active" : ""} to="/farmer/profile">My profile</Link>
         </nav>
         <div><Outlet /></div>
       </div>

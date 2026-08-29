@@ -12,15 +12,29 @@ export function SiteFooter() {
             </p>
           </div>
           <div>
+            <h4>Company</h4>
+            <ul>
+              <li><a href="/about">About Rockstar Organics</a></li>
+              <li><a href="/leadership">Leadership</a></li>
+              <li><a href="/manufacturing">Manufacturing</a></li>
+              <li><a href="/research-and-development">Research &amp; Development</a></li>
+              <li><a href="/quality-and-safety">Quality &amp; Safety</a></li>
+              <li><a href="/sustainability">Sustainability</a></li>
+              <li><a href="/careers">Careers</a></li>
+            </ul>
+          </div>
+          <div>
             <h4>Website</h4>
             <ul>
               <li><a href="/">Home</a></li>
-              <li><a href="/about">About Rockstar Organics</a></li>
               <li><a href="/products">Products</a></li>
-              <li><a href="/dealers">Dealers</a></li>
+              <li><a href="/knowledge">Knowledge Center</a></li>
+              <li><a href="/farmer-stories">Farmer Stories</a></li>
+              <li><a href="/announcements">News</a></li>
+              <li><a href="/dealers">Dealer Locator</a></li>
               <li><a href="/distributors">Distributors</a></li>
+              <li><a href="/farmer-support">Farmer Support</a></li>
               <li><a href="/contact">Contact</a></li>
-              <li><a href="/login">Login</a></li>
             </ul>
           </div>
           <div>

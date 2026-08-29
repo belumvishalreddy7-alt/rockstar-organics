@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../../api/client";
 import { EmptyState } from "../../components/EmptyState";
+import { useDocumentTitle } from "../../hooks/useDocumentTitle";
 
 interface AnnouncementSummary { id: string; title: string; slug: string; summary: string | null; publish_date: string | null; announcement_type: string; }
 interface AnnouncementDetail extends AnnouncementSummary { body: string; }
@@ -29,6 +30,7 @@ export function Announcements() {
 export function AnnouncementDetail() {
   const { slug } = useParams();
   const { data, isLoading, isError } = useQuery({ queryKey: ["announcement-detail", slug], queryFn: () => api.get<AnnouncementDetail>(`/announcements/public/${slug}`) });
+  useDocumentTitle(data ? `${data.title} | Rockstar Organics` : "News | Rockstar Organics");
   if (isLoading) return <div className="container page-section loading-state">Loading...</div>;
   if (isError || !data) return <div className="container page-section"><div className="alert alert-error">Announcement not found.</div></div>;
   return (

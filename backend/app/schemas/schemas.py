@@ -581,6 +581,54 @@ class AgriculturePhotoStatusChange(BaseModel):
 # raw `dict` these replaced.
 
 
+IRRIGATION_TYPE_VALUES = {"rainfed", "borewell", "canal", "drip", "sprinkler", "tank", "other"}
+LANGUAGE_VALUES = {"en", "te", "hi"}
+CONTACT_METHOD_VALUES = {"phone", "sms", "whatsapp", "email"}
+
+
+class FarmerProfileUpdate(BaseModel):
+    state: str | None = Field(default=None, max_length=100)
+    district: str | None = Field(default=None, max_length=100)
+    mandal: str | None = Field(default=None, max_length=100)
+    village: str | None = Field(default=None, max_length=150)
+    pin_code: str | None = None
+    farm_size: float | None = Field(default=None, ge=0, le=100000)
+    farm_size_unit: str | None = Field(default=None, max_length=20)
+    main_crops: str | None = Field(default=None, max_length=255)
+    irrigation_type: str | None = None
+    preferred_language: str | None = None
+    preferred_contact_method: str | None = None
+    public_data_opt_in: bool | None = None
+
+    @field_validator("pin_code")
+    @classmethod
+    def valid_pin(cls, v):
+        if v and not PIN_RE.match(v):
+            raise ValueError("Enter a valid 6-digit PIN code.")
+        return v
+
+    @field_validator("irrigation_type")
+    @classmethod
+    def valid_irrigation(cls, v):
+        if v and v not in IRRIGATION_TYPE_VALUES:
+            raise ValueError(f"irrigation_type must be one of: {', '.join(sorted(IRRIGATION_TYPE_VALUES))}.")
+        return v
+
+    @field_validator("preferred_language")
+    @classmethod
+    def valid_language(cls, v):
+        if v and v not in LANGUAGE_VALUES:
+            raise ValueError(f"preferred_language must be one of: {', '.join(sorted(LANGUAGE_VALUES))}.")
+        return v
+
+    @field_validator("preferred_contact_method")
+    @classmethod
+    def valid_contact_method(cls, v):
+        if v and v not in CONTACT_METHOD_VALUES:
+            raise ValueError(f"preferred_contact_method must be one of: {', '.join(sorted(CONTACT_METHOD_VALUES))}.")
+        return v
+
+
 class DealerProfileUpdate(BaseModel):
     directory_opt_in: bool | None = None
     farmer_case_opt_in: bool | None = None

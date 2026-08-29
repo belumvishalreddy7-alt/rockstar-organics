@@ -31,6 +31,7 @@ export function StaffDashboardLayout() {
     { to: "/staff/knowledge", label: "Knowledge articles" },
     { to: "/staff/tasks", label: "Follow-up tasks" },
     { to: "/staff/enquiries", label: "Enquiries" },
+    { to: "/staff/my-visits", label: "My assigned visits" },
     { to: "/staff/accounts", label: "Accounts" },
   ];
   return (
