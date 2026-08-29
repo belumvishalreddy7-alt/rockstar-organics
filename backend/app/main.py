@@ -24,20 +24,26 @@ from app.routers import (
     announcements,
     auth,
     categories,
+    certifications,
     company_documents,
+    company_page_content,
     dealers,
     distributors,
     enquiries,
     cases,
     farmers,
     knowledge,
+    leadership,
+    manufacturing,
     media,
     notifications,
     products,
     reports,
+    research,
     reviews,
     settings_router,
     staff,
+    sustainability,
     tasks,
     visits,
 )
@@ -219,6 +225,13 @@ app.include_router(accounts.router)
 app.include_router(distributors.router)
 app.include_router(company_documents.router)
 app.include_router(agriculture_photos.router)
+app.include_router(company_page_content.router)
+app.include_router(leadership.router)
+app.include_router(manufacturing.router)
+app.include_router(research.facilities_router)
+app.include_router(research.areas_router)
+app.include_router(certifications.router)
+app.include_router(sustainability.router)
 
 
 @app.get("/api/health")

@@ -178,6 +178,37 @@ def list_dealer_documents(application_id: str, user: User = Depends(require_role
     return [{"id": r.id, "original_filename": r.original_filename, "created_at": r.created_at.isoformat()} for r in records]
 
 
+CORPORATE_MEDIA_PURPOSES = {
+    "leadership_photo", "manufacturing_photo", "manufacturing_document",
+    "research_photo", "research_document", "certification_document",
+    "sustainability_photo", "sustainability_document",
+}
+
+
+@router.post("/corporate/{purpose}")
+def upload_corporate_media(purpose: str, file: UploadFile, alt_text: str = "",
+                            user: User = Depends(require_roles(*CONTENT_VERIFIERS)), db: Session = Depends(get_db)):
+    """Backs photo/document uploads for the Leadership, Manufacturing,
+    Research & Development, Quality & Safety, and Sustainability CMS
+    sections - owner/manager (CONTENT_VERIFIERS) only, matching every other
+    corporate-content create endpoint. Uploading a file never verifies or
+    publishes anything by itself; the caller then references the returned
+    id from the matching domain record (e.g. LeadershipProfile.photo_media_id)."""
+    if purpose not in CORPORATE_MEDIA_PURPOSES:
+        raise HTTPException(status_code=400, detail="Invalid upload purpose.")
+    allow_pdf = purpose.endswith("_document")
+    max_size = settings.MAX_DOCUMENT_SIZE_BYTES if allow_pdf else settings.MAX_IMAGE_SIZE_BYTES
+    path, original_name, content_type, size = validate_and_store(file, is_public=True, allow_pdf=allow_pdf, max_size_bytes=max_size)
+    record = MediaRecord(file_path=path, original_filename=original_name, content_type=content_type, size_bytes=size,
+                          is_public=True, purpose=purpose, alt_text=alt_text or None, uploaded_by_id=user.id)
+    db.add(record)
+    db.flush()
+    record_audit(db, actor_id=user.id, action="media.upload_corporate", entity_type="media_record", entity_id=record.id,
+                 summary=f"Corporate media uploaded ({purpose}): {original_name}")
+    db.commit()
+    return {"id": record.id, "file_path": path, "original_filename": original_name}
+
+
 @router.post("/company-documents")
 def upload_company_document_file(file: UploadFile, user: User = Depends(require_roles(*CONTENT_VERIFIERS)), db: Session = Depends(get_db)):
     """Uploads the underlying file only. The caller then creates a

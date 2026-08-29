@@ -686,3 +686,186 @@ class CategoryCreate(BaseModel):
         if not SLUG_RE.match(v):
             raise ValueError("Slug must be lowercase letters, numbers, and hyphens only.")
         return v
+
+
+# ---------------------------------------------------------------------------
+# Corporate content CMS (Leadership, Manufacturing, R&D, Quality & Safety,
+# Sustainability) - shared verification/approval/publication fields, plus
+# one Create/Out pair per entity for the fields that differ.
+# ---------------------------------------------------------------------------
+
+CORPORATE_SECTIONS = {"leadership", "manufacturing", "research_development", "quality_safety", "sustainability"}
+
+
+class WorkflowActionNote(BaseModel):
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class VerifiableFieldsOut(BaseModel):
+    id: str
+    status: str
+    source_reference: str | None
+    verification_notes: str | None
+    rejection_reason: str | None
+    created_by_id: str | None
+    updated_by_id: str | None
+    submitted_by_id: str | None
+    submitted_at: dt.datetime | None
+    reviewer_id: str | None
+    verified_at: dt.datetime | None
+    approved_by_id: str | None
+    approved_at: dt.datetime | None
+    published_by_id: str | None
+    published_at: dt.datetime | None
+    version: int
+    created_at: dt.datetime
+    updated_at: dt.datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CompanyPageContentUpdate(BaseModel):
+    fields: dict[str, str] = Field(default_factory=dict)
+    source_reference: str | None = Field(default=None, max_length=2000)
+
+    @field_validator("fields")
+    @classmethod
+    def cap_field_values(cls, v):
+        for key, value in v.items():
+            if len(key) > 100 or len(value) > 20000:
+                raise ValueError("Field name or value is too long.")
+        return v
+
+
+class CompanyPageContentOut(VerifiableFieldsOut):
+    section: str
+    fields: dict[str, str]
+
+
+class LeadershipProfileCreate(BaseModel):
+    full_name: str = Field(min_length=1, max_length=255)
+    position: str = Field(min_length=1, max_length=255)
+    biography: str | None = Field(default=None, max_length=8000)
+    photo_media_id: str | None = None
+    responsibilities: str | None = Field(default=None, max_length=4000)
+    experience: str | None = Field(default=None, max_length=4000)
+    education: str | None = Field(default=None, max_length=2000)
+    profile_url: str | None = Field(default=None, max_length=500)
+    joining_date: dt.datetime | None = None
+    sort_order: int = 0
+    source_reference: str | None = Field(default=None, max_length=2000)
+
+
+class LeadershipProfileOut(VerifiableFieldsOut):
+    full_name: str
+    position: str
+    biography: str | None
+    photo_media_id: str | None
+    responsibilities: str | None
+    experience: str | None
+    education: str | None
+    profile_url: str | None
+    joining_date: dt.datetime | None
+    sort_order: int
+
+
+class ManufacturingFacilityCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    facility_type: str | None = Field(default=None, max_length=100)
+    address: str | None = Field(default=None, max_length=2000)
+    latitude: float | None = None
+    longitude: float | None = None
+    description: str | None = Field(default=None, max_length=8000)
+    capabilities: str | None = Field(default=None, max_length=4000)
+    certifications_text: str | None = Field(default=None, max_length=2000)
+    capacity: str | None = Field(default=None, max_length=255)
+    established_date: dt.datetime | None = None
+    contact_info: str | None = Field(default=None, max_length=500)
+    source_reference: str | None = Field(default=None, max_length=2000)
+
+
+class ManufacturingFacilityOut(VerifiableFieldsOut):
+    name: str
+    facility_type: str | None
+    address: str | None
+    latitude: float | None
+    longitude: float | None
+    description: str | None
+    capabilities: str | None
+    certifications_text: str | None
+    capacity: str | None
+    established_date: dt.datetime | None
+    contact_info: str | None
+
+
+class ResearchFacilityCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    facility_type: str | None = Field(default=None, max_length=100)
+    location: str | None = Field(default=None, max_length=255)
+    description: str | None = Field(default=None, max_length=8000)
+    capabilities: str | None = Field(default=None, max_length=4000)
+    equipment_info: str | None = Field(default=None, max_length=4000)
+    source_reference: str | None = Field(default=None, max_length=2000)
+
+
+class ResearchFacilityOut(VerifiableFieldsOut):
+    name: str
+    facility_type: str | None
+    location: str | None
+    description: str | None
+    capabilities: str | None
+    equipment_info: str | None
+
+
+class ResearchAreaCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    description: str | None = Field(default=None, max_length=4000)
+    image_media_id: str | None = None
+    sort_order: int = 0
+    source_reference: str | None = Field(default=None, max_length=2000)
+
+
+class ResearchAreaOut(VerifiableFieldsOut):
+    title: str
+    description: str | None
+    image_media_id: str | None
+    sort_order: int
+
+
+class CertificationCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    certificate_number: str | None = Field(default=None, max_length=100)
+    issuing_organization: str | None = Field(default=None, max_length=255)
+    issue_date: dt.datetime | None = None
+    expiry_date: dt.datetime | None = None
+    document_media_id: str | None = None
+    scope: str | None = Field(default=None, max_length=2000)
+    source_reference: str | None = Field(default=None, max_length=2000)
+
+
+class CertificationOut(VerifiableFieldsOut):
+    name: str
+    certificate_number: str | None
+    issuing_organization: str | None
+    issue_date: dt.datetime | None
+    expiry_date: dt.datetime | None
+    document_media_id: str | None
+    scope: str | None
+
+
+class SustainabilityInitiativeCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    description: str | None = Field(default=None, max_length=8000)
+    category: str | None = Field(default=None, max_length=100)
+    start_date: dt.datetime | None = None
+    measurable_results: str | None = Field(default=None, max_length=2000)
+    source_reference: str | None = Field(default=None, max_length=2000)
+
+
+class SustainabilityInitiativeOut(VerifiableFieldsOut):
+    title: str
+    description: str | None
+    category: str | None
+    start_date: dt.datetime | None
+    measurable_results: str | None

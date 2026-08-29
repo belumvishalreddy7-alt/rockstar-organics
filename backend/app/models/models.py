@@ -17,6 +17,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    JSON,
     Numeric,
     String,
     Text,
@@ -810,3 +811,139 @@ class AgriculturePhoto(Base):
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+
+# ---------------------------------------------------------------------------
+# Corporate content CMS (Leadership, Manufacturing, Research & Development,
+# Quality & Safety, Sustainability) - 2026-08-29 spec.
+#
+# Every entity below shares one linear status flow instead of the older
+# boolean-flag style used by CompanyDocument/AgriculturePhoto above:
+#   draft -> submitted -> under_review -> verified / rejected -> approved
+#   -> published -> archived
+# See app/core/verifiable_workflow.py for the shared transition endpoints
+# these columns are built to support. Nothing here is ever seeded with
+# invented Rockstar Organics facts - every row starts empty/draft and is
+# only ever populated by an authorized administrator.
+# ---------------------------------------------------------------------------
+
+class VerifiableMixin:
+    """Shared verification/approval/publication/audit columns. `version` is
+    a simple change counter (bumped on every edit and every status
+    transition) rather than a full field-level snapshot history - combined
+    with the audit_logs entry every transition also writes, this gives a
+    real, queryable change history without a parallel snapshot table."""
+    status: Mapped[str] = mapped_column(String(20), default="draft")
+    # draft | submitted | under_review | verified | rejected | approved | published | archived
+    source_reference: Mapped[str | None] = mapped_column(Text, nullable=True)
+    verification_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("users.id"), nullable=True)
+    updated_by_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("users.id"), nullable=True)
+    submitted_by_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("users.id"), nullable=True)
+    submitted_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    reviewer_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("users.id"), nullable=True)
+    verified_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    approved_by_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("users.id"), nullable=True)
+    approved_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    published_by_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("users.id"), nullable=True)
+    published_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+
+class CompanyPageContent(Base, VerifiableMixin):
+    """CMS-controlled free-text overview fields for one corporate page
+    section - one row per section, created lazily on first admin edit.
+    `fields` holds the section's own set of named overview blocks (e.g.
+    manufacturing's "capabilities"/"processes"/"infrastructure" vs
+    sustainability's "approach"/"waste_management"/...) as a JSON object
+    of strings, since each section's field set genuinely differs."""
+    __tablename__ = "company_page_contents"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    section: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    # leadership | manufacturing | research_development | quality_safety | sustainability
+    fields: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class LeadershipProfile(Base, VerifiableMixin):
+    __tablename__ = "leadership_profiles"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    full_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    position: Mapped[str] = mapped_column(String(255), nullable=False)
+    biography: Mapped[str | None] = mapped_column(Text, nullable=True)
+    photo_media_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("media_records.id"), nullable=True)
+    responsibilities: Mapped[str | None] = mapped_column(Text, nullable=True)
+    experience: Mapped[str | None] = mapped_column(Text, nullable=True)
+    education: Mapped[str | None] = mapped_column(Text, nullable=True)
+    profile_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    joining_date: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class ManufacturingFacility(Base, VerifiableMixin):
+    __tablename__ = "manufacturing_facilities"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    facility_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    latitude: Mapped[float | None] = mapped_column(Numeric(9, 6), nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Numeric(9, 6), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    capabilities: Mapped[str | None] = mapped_column(Text, nullable=True)
+    certifications_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    capacity: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    established_date: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    contact_info: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+
+class ResearchFacility(Base, VerifiableMixin):
+    __tablename__ = "research_facilities"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    facility_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    location: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    capabilities: Mapped[str | None] = mapped_column(Text, nullable=True)
+    equipment_info: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class ResearchArea(Base, VerifiableMixin):
+    __tablename__ = "research_areas"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    image_media_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("media_records.id"), nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class Certification(Base, VerifiableMixin):
+    __tablename__ = "certifications"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    certificate_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    issuing_organization: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    issue_date: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    expiry_date: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    document_media_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("media_records.id"), nullable=True)
+    scope: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class SustainabilityInitiative(Base, VerifiableMixin):
+    __tablename__ = "sustainability_initiatives"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    category: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    start_date: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    measurable_results: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Only ever filled in with a real, sourced figure - never a placeholder
+    # statistic invented to make the page look populated.

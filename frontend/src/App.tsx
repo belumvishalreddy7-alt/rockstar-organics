@@ -16,7 +16,7 @@ import { Gallery } from "./pages/public/Gallery";
 import { Knowledge, KnowledgeDetail } from "./pages/public/Knowledge";
 import { Announcements, AnnouncementDetail } from "./pages/public/Announcements";
 import { About, Contact, PrivacyPolicy, Terms, Disclaimer, CookieNotice, NotFound, Forbidden, ServerError } from "./pages/public/StaticPages";
-import { Leadership, Manufacturing, ResearchAndDevelopment, QualityAndSafety, Sustainability, FarmerStories, Careers } from "./pages/public/CorporatePages";
+import { Leadership, LeadershipDetail, Manufacturing, ResearchAndDevelopment, QualityAndSafety, Sustainability, FarmerStories, Careers } from "./pages/public/CorporatePages";
 import { useRouteTitle } from "./hooks/useRouteTitle";
 import { Login, Register, ForgotPassword, ResetPassword } from "./pages/public/Auth";
 import { Signup } from "./pages/public/Signup";
@@ -41,6 +41,7 @@ import { TaskBoard } from "./pages/staff/TaskBoard";
 import { EnquiryQueue } from "./pages/staff/EnquiryQueue";
 import { AccountManagement } from "./pages/staff/AccountManagement";
 import { MyVisits } from "./pages/staff/MyVisits";
+import { CorporateContentManagement } from "./pages/staff/CorporateContentManagement";
 
 const STAFF_ROLES = ["super_admin", "admin", "content_manager", "sales_manager", "field_officer"];
 
@@ -86,6 +87,7 @@ export default function App() {
           <Route path="/announcements/:slug" element={<AnnouncementDetail />} />
           <Route path="/about" element={<About />} />
           <Route path="/leadership" element={<Leadership />} />
+          <Route path="/leadership/:id" element={<LeadershipDetail />} />
           <Route path="/manufacturing" element={<Manufacturing />} />
           <Route path="/research-and-development" element={<ResearchAndDevelopment />} />
           <Route path="/quality-and-safety" element={<QualityAndSafety />} />
@@ -159,6 +161,7 @@ export default function App() {
             <Route path="enquiries" element={<EnquiryQueue />} />
             <Route path="accounts" element={<AccountManagement />} />
             <Route path="my-visits" element={<MyVisits />} />
+            <Route path="corporate-content" element={<CorporateContentManagement />} />
           </Route>
 
           <Route path="/403" element={<Forbidden />} />
