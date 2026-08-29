@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { api, ApiError } from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
+import { PasswordInput } from "../../components/PasswordInput";
 
 const STAFF_ROLES = ["super_admin", "admin", "content_manager", "sales_manager", "field_officer"];
 
@@ -46,9 +47,9 @@ export function ChangePassword() {
           }}
         >
           <div className="field"><label htmlFor="current_password">Current password</label>
-            <input id="current_password" type="password" required value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} /></div>
+            <PasswordInput id="current_password" required autoComplete="current-password" value={currentPassword} onChange={setCurrentPassword} /></div>
           <div className="field"><label htmlFor="new_password">New password</label>
-            <input id="new_password" type="password" required value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+            <PasswordInput id="new_password" required autoComplete="new-password" value={newPassword} onChange={setNewPassword} />
             <p className="hint">At least 10 characters, with uppercase, lowercase, and a digit.</p></div>
           <button className="btn btn-primary" type="submit" disabled={pending}>{pending ? "Updating..." : "Change password"}</button>
         </form>

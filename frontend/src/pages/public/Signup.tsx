@@ -3,6 +3,7 @@ import { useMutation } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { api, ApiError, uploadFile } from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
+import { PasswordInput } from "../../components/PasswordInput";
 
 type Role = "farmer" | "dealer" | "distributor";
 
@@ -99,7 +100,7 @@ function FarmerSignupForm() {
           <div className="field"><label htmlFor="phone">Phone (10-digit mobile)</label>
             <input type="text" id="phone" required value={details.phone} onChange={(e) => setDetails({ ...details, phone: e.target.value })} /></div>
           <div className="field"><label htmlFor="password">Password</label>
-            <input id="password" type="password" required value={details.password} onChange={(e) => setDetails({ ...details, password: e.target.value })} />
+            <PasswordInput id="password" required autoComplete="new-password" value={details.password} onChange={(v) => setDetails({ ...details, password: v })} />
             <p className="hint">At least 10 characters, with uppercase, lowercase, and a digit.</p></div>
           <button className="btn btn-primary" type="submit" disabled={requestOtp.isPending}>
             {requestOtp.isPending ? "Sending code..." : "Send verification code"}

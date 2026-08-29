@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { api, ApiError } from "../../api/client";
+import { PasswordInput } from "../../components/PasswordInput";
 
 export function Login() {
   const { login } = useAuth();
@@ -35,9 +36,9 @@ export function Login() {
           }}
         >
           <div className="field"><label htmlFor="email">Email</label>
-            <input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></div>
+            <input id="email" type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
           <div className="field"><label htmlFor="password">Password</label>
-            <input id="password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} /></div>
+            <PasswordInput id="password" required autoComplete="current-password" value={password} onChange={setPassword} /></div>
           <button className="btn btn-primary" type="submit" disabled={pending}>{pending ? "Signing in..." : "Sign in"}</button>
         </form>
         <p className="small" style={{ marginTop: 12 }}>
@@ -83,7 +84,7 @@ export function Register() {
           <div className="field"><label htmlFor="phone">Phone (10-digit mobile)</label>
             <input type="text" id="phone" required value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
           <div className="field"><label htmlFor="password">Password</label>
-            <input id="password" type="password" required value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+            <PasswordInput id="password" required autoComplete="new-password" value={form.password} onChange={(v) => setForm({ ...form, password: v })} />
             <p className="hint">At least 10 characters, with uppercase, lowercase, and a digit.</p></div>
           <button className="btn btn-primary" type="submit" disabled={pending}>{pending ? "Creating account..." : "Create account"}</button>
         </form>
@@ -177,7 +178,7 @@ export function ResetPassword() {
             <div className="field"><label htmlFor="token">Reset token</label>
               <input type="text" id="token" required value={token} onChange={(e) => setToken(e.target.value)} /></div>
             <div className="field"><label htmlFor="new_password">New password</label>
-              <input id="new_password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} /></div>
+              <PasswordInput id="new_password" required autoComplete="new-password" value={password} onChange={setPassword} /></div>
             <button className="btn btn-primary" type="submit">Set new password</button>
           </form>
         )}
