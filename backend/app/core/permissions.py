@@ -18,11 +18,10 @@ STAFF_ROLES = {
 }
 
 PRODUCT_MANAGERS = {ROLE_SUPER_ADMIN, ROLE_ADMIN, ROLE_CONTENT_MANAGER}
-# Dealers may submit a product listing (draft, own-record edits, submit for
-# review) but never approve/publish/delete - those stay PRODUCT_MANAGERS-only,
-# matching the submit-then-staff-approves pattern used for certificates and
-# agriculture photos. Farmers are deliberately never included here.
-PRODUCT_CONTRIBUTORS = PRODUCT_MANAGERS | {ROLE_DEALER}
+# Product creation/upload is restricted to the owner (super_admin) and
+# company managers (admin, content_manager) only - dealers and farmers are
+# deliberately never included here.
+PRODUCT_CONTRIBUTORS = PRODUCT_MANAGERS
 DEALER_MANAGERS = {ROLE_SUPER_ADMIN, ROLE_ADMIN, ROLE_SALES_MANAGER}
 DISTRIBUTOR_MANAGERS = {ROLE_SUPER_ADMIN, ROLE_ADMIN, ROLE_SALES_MANAGER}
 CASE_MANAGERS = {ROLE_SUPER_ADMIN, ROLE_ADMIN, ROLE_SALES_MANAGER, ROLE_FIELD_OFFICER}

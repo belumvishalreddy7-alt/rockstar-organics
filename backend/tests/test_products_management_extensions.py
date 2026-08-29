@@ -112,13 +112,23 @@ def test_document_upload_and_verification_flow(client, super_admin):
     assert verify.json()["verification_status"] == "verified"
 
 
-def test_dealer_cannot_verify_their_own_claim(client, approved_dealer):
-    _, email, password, _ = approved_dealer
-    _login(client, email, password)
+def test_dealer_has_no_product_access(client, approved_dealer, super_admin):
+    """Product creation/upload is owner (super_admin) + manager
+    (admin, content_manager) only - a dealer cannot create a product, add a
+    claim to one, or verify a claim."""
+    admin_uid, admin_email, admin_password = super_admin
+    _login(client, admin_email, admin_password)
     pid = _create_draft_product(client, sku="SKU-EXT-DEALER-CLAIM")
     claim = client.post(f"/api/v1/products/{pid}/claims", json={"claim_text": "Boosts yield.", "category": "benefit"})
-    assert claim.status_code == 200
     claim_id = claim.json()["id"]
+    client.post("/api/v1/auth/logout")
 
+    _, email, password, _ = approved_dealer
+    _login(client, email, password)
+    assert client.post("/api/v1/products", json={
+        "sku": "SKU-EXT-DEALER-002", "name": "x", "slug": "ext-dealer-002",
+        "precautions": "x", "full_description": "x",
+    }).status_code == 403
+    assert client.post(f"/api/v1/products/{pid}/claims", json={"claim_text": "x", "category": "benefit"}).status_code == 403
     # only a verifier (content_manager/admin/super_admin) may verify a claim
     assert client.post(f"/api/v1/products/{pid}/claims/{claim_id}/verify", json={"verification_status": "verified"}).status_code == 403

@@ -35,8 +35,6 @@ def upload_product_image(product_id: str, file: UploadFile, alt_text: str = "",
     product = db.get(Product, product_id)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found.")
-    if user.role == ROLE_DEALER and (product.created_by_id != user.id or product.status != "draft"):
-        raise HTTPException(status_code=403, detail="You can only add images to your own draft listings.")
     if not alt_text.strip():
         raise HTTPException(status_code=400, detail="Alt text is required for product images.")
 
@@ -91,8 +89,6 @@ def upload_product_document_file(product_id: str, file: UploadFile,
     product = db.get(Product, product_id)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found.")
-    if user.role == ROLE_DEALER and (product.created_by_id != user.id or product.status != "draft"):
-        raise HTTPException(status_code=403, detail="You can only add documents to your own draft listings.")
     path, original_name, content_type, size = validate_and_store(
         file, is_public=True, allow_pdf=True, max_size_bytes=settings.MAX_DOCUMENT_SIZE_BYTES,
     )

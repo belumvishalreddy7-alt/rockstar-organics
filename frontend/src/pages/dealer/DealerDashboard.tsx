@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, Outlet, useLocation } from "react-router-dom";
 import { api } from "../../api/client";
 import { EmptyState } from "../../components/EmptyState";
 
@@ -8,21 +7,6 @@ interface DealerProfileOut {
   id: string; business_name: string; district: string; directory_opt_in: boolean; farmer_case_opt_in: boolean;
   show_public_phone: boolean; show_public_email: boolean; public_phone: string | null; public_email: string | null;
   service_areas: { id: string; district: string; mandal: string | null }[];
-}
-
-export function DealerLayout() {
-  const location = useLocation();
-  return (
-    <div className="container page-section">
-      <div className="dashboard-layout">
-        <nav className="dashboard-nav" aria-label="Dealer account navigation">
-          <Link className={location.pathname === "/dealer" ? "active" : ""} to="/dealer">Profile</Link>
-          <Link className={location.pathname === "/dealer/products" ? "active" : ""} to="/dealer/products">My product listings</Link>
-        </nav>
-        <div><Outlet /></div>
-      </div>
-    </div>
-  );
 }
 
 export function DealerDashboard() {
@@ -41,7 +25,7 @@ export function DealerDashboard() {
   if (isLoading || !data) return <div className="loading-state">Loading your dealer profile...</div>;
 
   return (
-    <div>
+    <div className="container page-section">
       <h1>{data.business_name}</h1>
       <p className="muted">District: {data.district}</p>
 

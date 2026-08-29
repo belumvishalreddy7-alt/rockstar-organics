@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.audit import record_audit
 from app.core.database import get_db
 from app.core.deps import require_roles, require_user
-from app.core.permissions import CONTENT_VERIFIERS, PRODUCT_CONTRIBUTORS, PRODUCT_MANAGERS, ROLE_DEALER, SETTINGS_MANAGERS
+from app.core.permissions import CONTENT_VERIFIERS, PRODUCT_CONTRIBUTORS, PRODUCT_MANAGERS, SETTINGS_MANAGERS
 from app.models.models import (
     Product,
     ProductCertification,
@@ -42,8 +42,8 @@ router = APIRouter(prefix="/api/v1/products", tags=["products"])
 # Role tiers, reusing the sets already defined in app.core.permissions
 # instead of inventing a parallel authorization system (same pattern as
 # company_documents.py/agriculture_photos.py's verify-then-approve split):
-#   PRODUCT_CONTRIBUTORS - staff + dealer: create/submit their own work
-#   PRODUCT_MANAGERS     - staff only (no dealer): can send content back
+#   PRODUCT_CONTRIBUTORS - owner + managers: create/submit product content
+#   PRODUCT_MANAGERS     - same set as above: can send content back
 #   CONTENT_VERIFIERS    - super_admin/admin/content_manager: the "verifier"
 #   SETTINGS_MANAGERS    - super_admin/admin only: the "approver"/publisher
 TRANSITION_RULES: dict[tuple[str, str], set[str]] = {
@@ -222,12 +222,6 @@ def admin_list_products(status: str | None = None, page: int = 1, page_size: int
                          user: User = Depends(require_roles(*PRODUCT_CONTRIBUTORS)),
                          db: Session = Depends(get_db)):
     query = db.query(Product).options(joinedload(Product.images))
-    # A dealer only ever sees their own submitted listings, never other
-    # dealers' or staff-created products - PRODUCT_CONTRIBUTORS lets a
-    # dealer call this endpoint at all, but it must not become a way to
-    # browse everyone else's unpublished drafts.
-    if user.role == ROLE_DEALER:
-        query = query.filter(Product.created_by_id == user.id)
     if status:
         query = query.filter(Product.status == status)
     total = query.count()
@@ -258,14 +252,6 @@ def update_product(product_id: str, payload: ProductUpdate, user: User = Depends
     p = db.get(Product, product_id)
     if not p:
         raise HTTPException(status_code=404, detail="Product not found.")
-    # A dealer may only edit their own listing, and only before it has
-    # been submitted for staff review - once it moves to in_review or
-    # beyond, further changes go through staff (PRODUCT_MANAGERS).
-    if user.role == ROLE_DEALER:
-        if p.created_by_id != user.id:
-            raise HTTPException(status_code=403, detail="You can only edit your own product listings.")
-        if p.status != "draft":
-            raise HTTPException(status_code=400, detail="This listing has already been submitted and can no longer be edited directly.")
     for field, value in payload.model_dump().items():
         setattr(p, field, value)
     p.updated_by_id = user.id
@@ -288,11 +274,6 @@ def transition_product(product_id: str, new_status: str, payload: ProductStatusC
     required_roles = TRANSITION_RULES[rule_key]
     if user.role not in required_roles:
         raise HTTPException(status_code=403, detail=f"You are not authorized to move a product from '{p.status}' to '{new_status}'.")
-    # Even within an allowed role, a dealer may only ever act on their own
-    # listing - PRODUCT_CONTRIBUTORS-gated transitions (submitting a draft)
-    # would otherwise let one dealer submit another dealer's draft.
-    if user.role == ROLE_DEALER and p.created_by_id != user.id:
-        raise HTTPException(status_code=403, detail="You can only submit your own product listings.")
 
     if new_status == "published":
         missing = []
@@ -341,23 +322,12 @@ def _get_product_or_404(db: Session, product_id: str) -> Product:
     return p
 
 
-def _require_contributor_access(p: Product, user: User) -> None:
-    """A dealer may only add sub-records (pack sizes, crops, claims,
-    certifications, documents) to their own listing, and only while it's
-    still a draft - identical rule to update_product/upload_product_image,
-    kept in one place so every sub-resource endpoint enforces it the same
-    way."""
-    if user.role == ROLE_DEALER and (p.created_by_id != user.id or p.status != "draft"):
-        raise HTTPException(status_code=403, detail="You can only add details to your own draft listings.")
-
-
 # --- Pack sizes ---------------------------------------------------------
 
 @router.post("/{product_id}/pack-sizes")
 def add_pack_size(product_id: str, payload: ProductPackSizeCreate,
                    user: User = Depends(require_roles(*PRODUCT_CONTRIBUTORS)), db: Session = Depends(get_db)):
     p = _get_product_or_404(db, product_id)
-    _require_contributor_access(p, user)
     row = ProductPackSize(product_id=p.id, sort_order=db.query(ProductPackSize).filter(ProductPackSize.product_id == p.id).count(),
                            **payload.model_dump())
     db.add(row)
@@ -371,7 +341,6 @@ def add_pack_size(product_id: str, payload: ProductPackSizeCreate,
 def remove_pack_size(product_id: str, pack_size_id: str,
                       user: User = Depends(require_roles(*PRODUCT_CONTRIBUTORS)), db: Session = Depends(get_db)):
     p = _get_product_or_404(db, product_id)
-    _require_contributor_access(p, user)
     row = db.get(ProductPackSize, pack_size_id)
     if not row or row.product_id != p.id:
         raise HTTPException(status_code=404, detail="Pack size not found.")
@@ -387,7 +356,6 @@ def remove_pack_size(product_id: str, pack_size_id: str,
 def add_crop(product_id: str, payload: ProductCropCreate,
              user: User = Depends(require_roles(*PRODUCT_CONTRIBUTORS)), db: Session = Depends(get_db)):
     p = _get_product_or_404(db, product_id)
-    _require_contributor_access(p, user)
     row = ProductCrop(product_id=p.id, sort_order=db.query(ProductCrop).filter(ProductCrop.product_id == p.id).count(),
                        **payload.model_dump())
     db.add(row)
@@ -401,7 +369,6 @@ def add_crop(product_id: str, payload: ProductCropCreate,
 def remove_crop(product_id: str, crop_id: str,
                  user: User = Depends(require_roles(*PRODUCT_CONTRIBUTORS)), db: Session = Depends(get_db)):
     p = _get_product_or_404(db, product_id)
-    _require_contributor_access(p, user)
     row = db.get(ProductCrop, crop_id)
     if not row or row.product_id != p.id:
         raise HTTPException(status_code=404, detail="Crop association not found.")
@@ -417,7 +384,6 @@ def remove_crop(product_id: str, crop_id: str,
 def add_claim(product_id: str, payload: ProductClaimCreate,
               user: User = Depends(require_roles(*PRODUCT_CONTRIBUTORS)), db: Session = Depends(get_db)):
     p = _get_product_or_404(db, product_id)
-    _require_contributor_access(p, user)
     row = ProductClaim(product_id=p.id, **payload.model_dump())
     db.add(row)
     record_audit(db, actor_id=user.id, action="product.claim.add", entity_type="product", entity_id=p.id, summary=f"Claim added to {p.name}")
@@ -448,7 +414,6 @@ def verify_claim(product_id: str, claim_id: str, payload: VerificationStatusChan
 def remove_claim(product_id: str, claim_id: str,
                   user: User = Depends(require_roles(*PRODUCT_CONTRIBUTORS)), db: Session = Depends(get_db)):
     p = _get_product_or_404(db, product_id)
-    _require_contributor_access(p, user)
     row = db.get(ProductClaim, claim_id)
     if not row or row.product_id != p.id:
         raise HTTPException(status_code=404, detail="Claim not found.")
@@ -464,7 +429,6 @@ def remove_claim(product_id: str, claim_id: str,
 def add_certification(product_id: str, payload: ProductCertificationCreate,
                        user: User = Depends(require_roles(*PRODUCT_CONTRIBUTORS)), db: Session = Depends(get_db)):
     p = _get_product_or_404(db, product_id)
-    _require_contributor_access(p, user)
     row = ProductCertification(product_id=p.id, **payload.model_dump())
     db.add(row)
     record_audit(db, actor_id=user.id, action="product.certification.add", entity_type="product", entity_id=p.id,
@@ -491,7 +455,6 @@ def verify_certification(product_id: str, certification_id: str, payload: Verifi
 def remove_certification(product_id: str, certification_id: str,
                           user: User = Depends(require_roles(*PRODUCT_CONTRIBUTORS)), db: Session = Depends(get_db)):
     p = _get_product_or_404(db, product_id)
-    _require_contributor_access(p, user)
     row = db.get(ProductCertification, certification_id)
     if not row or row.product_id != p.id:
         raise HTTPException(status_code=404, detail="Certification not found.")
@@ -510,7 +473,6 @@ def add_document(product_id: str, payload: ProductDocumentCreate,
     POST /api/v1/media/products/{product_id}/documents, which returns the
     media_id this call references."""
     p = _get_product_or_404(db, product_id)
-    _require_contributor_access(p, user)
     row = ProductDocument(product_id=p.id, uploaded_by_id=user.id, **payload.model_dump())
     db.add(row)
     record_audit(db, actor_id=user.id, action="product.document.add", entity_type="product", entity_id=p.id,
@@ -542,7 +504,6 @@ def verify_document(product_id: str, document_id: str, payload: VerificationStat
 def remove_document(product_id: str, document_id: str,
                      user: User = Depends(require_roles(*PRODUCT_CONTRIBUTORS)), db: Session = Depends(get_db)):
     p = _get_product_or_404(db, product_id)
-    _require_contributor_access(p, user)
     row = db.get(ProductDocument, document_id)
     if not row or row.product_id != p.id:
         raise HTTPException(status_code=404, detail="Document not found.")
