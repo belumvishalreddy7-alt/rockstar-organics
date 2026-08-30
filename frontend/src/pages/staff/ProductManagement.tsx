@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, mediaUrl, uploadFile } from "../../api/client";
+import { useAuth } from "../../context/AuthContext";
 import { EmptyState } from "../../components/EmptyState";
 import { StatusBadge } from "../../components/StatusBadge";
 
@@ -44,6 +45,7 @@ const DOCUMENT_TYPES = ["technical_data_sheet", "specification", "safety_data_sh
 const CLAIM_CATEGORIES = ["benefit", "technical", "crop", "quality", "certification"];
 
 export function ProductManagement() {
+  const { user } = useAuth();
   const qc = useQueryClient();
   const [statusFilter, setStatusFilter] = useState("");
   const [showForm, setShowForm] = useState(false);
@@ -78,6 +80,12 @@ export function ProductManagement() {
 
   const transition = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) => api.post(`/products/${id}/transition/${status}`, {}),
+    onSuccess: invalidate,
+    onError: onErr,
+  });
+
+  const removeProduct = useMutation({
+    mutationFn: (id: string) => api.del(`/products/${id}`),
     onSuccess: invalidate,
     onError: onErr,
   });
@@ -269,6 +277,16 @@ export function ProductManagement() {
                   <button className="btn btn-ghost btn-sm" onClick={() => setExpandedId(expandedId === p.id ? null : p.id)}>
                     {expandedId === p.id ? "Hide details" : "Manage details"}
                   </button>
+                  {user?.role === "super_admin" && (
+                    <button
+                      className="btn btn-danger btn-sm"
+                      onClick={() => {
+                        if (window.confirm(`Permanently delete "${p.name}" (${p.sku})? This cannot be undone.`)) removeProduct.mutate(p.id);
+                      }}
+                    >
+                      Delete
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
