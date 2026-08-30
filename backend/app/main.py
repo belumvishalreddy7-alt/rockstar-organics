@@ -43,6 +43,7 @@ from app.routers import (
     reviews,
     settings_router,
     staff,
+    staff_applications,
     sustainability,
     tasks,
     visits,
@@ -232,6 +233,7 @@ app.include_router(research.facilities_router)
 app.include_router(research.areas_router)
 app.include_router(certifications.router)
 app.include_router(sustainability.router)
+app.include_router(staff_applications.router)
 
 
 @app.get("/api/health")

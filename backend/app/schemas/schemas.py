@@ -870,3 +870,45 @@ class SustainabilityInitiativeOut(VerifiableFieldsOut):
     category: str | None
     start_date: dt.datetime | None
     measurable_results: str | None
+
+
+# ---------------------------------------------------------------------------
+# Staff (employee) applications - a public applicant may only request one of
+# these three positions; admin/super_admin are never offered here and can
+# only ever be granted by an existing super_admin at approval time (see
+# StaffApplicationApprove.role, validated against STAFF_ROLES generally,
+# and require_roles(ROLE_SUPER_ADMIN) for granting super_admin specifically).
+# ---------------------------------------------------------------------------
+
+STAFF_POSITION_VALUES = {"content_manager", "sales_manager", "field_officer"}
+
+
+class StaffApplicationCreate(BaseModel):
+    full_name: str = Field(min_length=1, max_length=255)
+    email: EmailStr
+    phone: str
+    position_applied_for: str
+    notes: str | None = Field(default=None, max_length=2000)
+    consent_given: bool
+
+    @field_validator("phone")
+    @classmethod
+    def valid_phone(cls, v):
+        if not PHONE_RE.match(v):
+            raise ValueError("Enter a valid 10-digit Indian mobile number.")
+        return v
+
+    @field_validator("position_applied_for")
+    @classmethod
+    def valid_position(cls, v):
+        if v not in STAFF_POSITION_VALUES:
+            raise ValueError(f"position_applied_for must be one of: {', '.join(sorted(STAFF_POSITION_VALUES))}.")
+        return v
+
+
+class StaffApplicationDecision(BaseModel):
+    reason: str | None = Field(default=None, max_length=2000)
+
+
+class StaffApplicationApprove(BaseModel):
+    role: str = Field(min_length=1, max_length=30)

@@ -951,3 +951,35 @@ class SustainabilityInitiative(Base, VerifiableMixin):
     measurable_results: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Only ever filled in with a real, sourced figure - never a placeholder
     # statistic invented to make the page look populated.
+
+
+class StaffApplication(Base):
+    """A public employment application for an internal (staff-level)
+    position - the ONLY way a staff account can come to exist without an
+    existing owner/admin directly inviting one. Submitting this form never
+    creates a login by itself: an owner/admin must review and approve it,
+    at which point they choose the actual role to grant (not necessarily
+    the position the applicant requested) and a real account is created
+    with a system-generated temporary password, via the exact same
+    create-account logic as staff.invite - self-registration never grants
+    staff access on its own."""
+    __tablename__ = "staff_applications"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    reference_number: Mapped[str] = mapped_column(String(30), unique=True, nullable=False)
+    full_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    phone: Mapped[str] = mapped_column(String(20), nullable=False)
+    position_applied_for: Mapped[str] = mapped_column(String(50), nullable=False)
+    # content_manager | sales_manager | field_officer - the only positions a
+    # public applicant may request; admin/super_admin are never offered here
+    # and can only ever be granted by an existing super_admin at approval time.
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    consent_given: Mapped[bool] = mapped_column(Boolean, default=False)
+    status: Mapped[str] = mapped_column(String(30), default="new")
+    # new | under_review | information_required | contacted | on_hold | approved | rejected | withdrawn
+    reviewer_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("users.id"), nullable=True)
+    review_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now, onupdate=_now)

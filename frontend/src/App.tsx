@@ -42,6 +42,7 @@ import { EnquiryQueue } from "./pages/staff/EnquiryQueue";
 import { AccountManagement } from "./pages/staff/AccountManagement";
 import { MyVisits } from "./pages/staff/MyVisits";
 import { CorporateContentManagement } from "./pages/staff/CorporateContentManagement";
+import { StaffApplications } from "./pages/staff/StaffApplications";
 
 const STAFF_ROLES = ["super_admin", "admin", "content_manager", "sales_manager", "field_officer"];
 
@@ -162,6 +163,7 @@ export default function App() {
             <Route path="accounts" element={<AccountManagement />} />
             <Route path="my-visits" element={<MyVisits />} />
             <Route path="corporate-content" element={<CorporateContentManagement />} />
+            <Route path="staff-applications" element={<StaffApplications />} />
           </Route>
 
           <Route path="/403" element={<Forbidden />} />

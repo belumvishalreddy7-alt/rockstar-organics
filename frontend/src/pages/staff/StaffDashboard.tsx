@@ -34,6 +34,7 @@ export function StaffDashboardLayout() {
     { to: "/staff/my-visits", label: "My assigned visits" },
     { to: "/staff/accounts", label: "Accounts" },
     { to: "/staff/corporate-content", label: "Corporate content" },
+    { to: "/staff/staff-applications", label: "Staff applications" },
   ];
   return (
     <div className="container page-section">

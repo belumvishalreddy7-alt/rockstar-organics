@@ -5,12 +5,13 @@ import { api, ApiError, uploadFile } from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
 import { PasswordInput } from "../../components/PasswordInput";
 
-type Role = "farmer" | "dealer" | "distributor";
+type Role = "farmer" | "dealer" | "distributor" | "employee";
 
 const ROLES: { value: Role; label: string; blurb: string }[] = [
   { value: "farmer", label: "Farmer", blurb: "Get an account immediately after a quick email verification." },
   { value: "dealer", label: "Dealer", blurb: "Submits an application for staff review — an account is created only after approval." },
   { value: "distributor", label: "Distributor", blurb: "Submits an application for staff review — an account is created only after approval." },
+  { value: "employee", label: "Employee", blurb: "Submits an employment application for review — an account is created only after approval, and never with owner-level access from this form." },
 ];
 
 /**
@@ -21,11 +22,14 @@ const ROLES: { value: Role; label: string; blurb: string }[] = [
  *    a hashed password (Argon2, server-side) the moment the code is
  *    verified. No account exists before that (see POST /api/v1/auth/signup
  *    and POST /api/v1/auth/verify-otp).
- *  - Dealer / Distributor: per the master spec's verification workflow,
- *    these roles do NOT get a login at signup time. The form submits a
- *    DealerApplication/DistributorApplication for staff review; a User
- *    row (and hashed password) is only created by staff on approval
- *    (see Staff -> Dealer applications / Distributor applications).
+ *  - Dealer / Distributor / Employee: per the master spec's verification
+ *    workflow, these roles do NOT get a login at signup time. The form
+ *    submits a DealerApplication/DistributorApplication/StaffApplication
+ *    for staff review; a User row (and hashed password) is only created
+ *    by an owner/admin on approval - and for Employee specifically, the
+ *    reviewer chooses the actual role granted (never owner-level from a
+ *    public form) rather than trusting the applicant's requested position
+ *    (see Staff -> Dealer/Distributor/Staff applications).
  */
 export function Signup() {
   const [role, setRole] = useState<Role>("farmer");
@@ -43,6 +47,7 @@ export function Signup() {
         {role === "farmer" && <FarmerSignupForm />}
         {role === "dealer" && <DealerSignupForm />}
         {role === "distributor" && <DistributorSignupForm />}
+        {role === "employee" && <EmployeeSignupForm />}
         <p className="small" style={{ marginTop: 16 }}>
           Already have an account? <Link to="/login">Sign in</Link>
         </p>
@@ -272,6 +277,67 @@ function DistributorSignupForm() {
         <textarea id="dist-warehouse" value={form.warehouse_capacity_notes} onChange={(e) => setForm({ ...form, warehouse_capacity_notes: e.target.value })} /></div>
       <div className="field"><label htmlFor="dist-notes">Additional notes (optional)</label>
         <textarea id="dist-notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
+      <div className="field">
+        <label><input type="checkbox" required checked={form.consent_given} onChange={(e) => setForm({ ...form, consent_given: e.target.checked })} /> I consent to Rockstar Organics storing this information to process my application.</label>
+      </div>
+      <button className="btn btn-primary" type="submit" disabled={submit.isPending}>
+        {submit.isPending ? "Submitting..." : "Submit application"}
+      </button>
+    </form>
+  );
+}
+
+interface EmployeeSignupFormState {
+  full_name: string; email: string; phone: string; position_applied_for: string; notes: string; consent_given: boolean;
+}
+
+const initialEmployee: EmployeeSignupFormState = {
+  full_name: "", email: "", phone: "", position_applied_for: "field_officer", notes: "", consent_given: false,
+};
+
+const EMPLOYEE_POSITIONS = [
+  { value: "field_officer", label: "Field Officer" },
+  { value: "sales_manager", label: "Sales Manager" },
+  { value: "content_manager", label: "Content Manager" },
+];
+
+function EmployeeSignupForm() {
+  const [form, setForm] = useState<EmployeeSignupFormState>(initialEmployee);
+  const [error, setError] = useState<string | null>(null);
+  const [reference, setReference] = useState<string | null>(null);
+
+  const submit = useMutation({
+    mutationFn: () => api.post<{ reference_number: string }>("/staff-applications", form),
+    onSuccess: (r) => { setReference(r.reference_number); setError(null); },
+    onError: (e: unknown) => setError(e instanceof ApiError ? e.message : "Something went wrong."),
+  });
+
+  if (reference) {
+    return (
+      <div className="alert alert-success">
+        Application submitted. Your reference number is <strong>{reference}</strong>. Our team will review it, and
+        an administrator will provide your login only if it is approved — no password is needed yet, and this form
+        never grants access on its own.
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); submit.mutate(); }}>
+      {error && <div className="alert alert-error">{error}</div>}
+      <div className="field"><label htmlFor="emp-full_name">Full name</label>
+        <input type="text" id="emp-full_name" required value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} /></div>
+      <div className="field"><label htmlFor="emp-email">Email</label>
+        <input id="emp-email" type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
+      <div className="field"><label htmlFor="emp-phone">Phone (10-digit mobile)</label>
+        <input type="text" id="emp-phone" required value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
+      <div className="field"><label htmlFor="emp-position">Position applying for</label>
+        <select id="emp-position" value={form.position_applied_for} onChange={(e) => setForm({ ...form, position_applied_for: e.target.value })}>
+          {EMPLOYEE_POSITIONS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+        </select>
+      </div>
+      <div className="field"><label htmlFor="emp-notes">Additional notes (optional)</label>
+        <textarea id="emp-notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
       <div className="field">
         <label><input type="checkbox" required checked={form.consent_given} onChange={(e) => setForm({ ...form, consent_given: e.target.checked })} /> I consent to Rockstar Organics storing this information to process my application.</label>
       </div>
