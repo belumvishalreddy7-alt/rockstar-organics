@@ -14,6 +14,7 @@ from app.models.models import (
     ProductClaim,
     ProductCrop,
     ProductDocument,
+    ProductImage,
     ProductPackSize,
     ProductReview,
     User,
@@ -320,6 +321,24 @@ def _get_product_or_404(db: Session, product_id: str) -> Product:
     if not p:
         raise HTTPException(status_code=404, detail="Product not found.")
     return p
+
+
+# --- Images ----------------------------------------------------------------
+# Upload itself lives in media.py (POST /media/products/{id}/images) since it
+# handles the file; removal is a plain sub-resource delete like every other
+# product child record below.
+
+@router.delete("/{product_id}/images/{image_id}")
+def remove_image(product_id: str, image_id: str, user: User = Depends(require_roles(*PRODUCT_CONTRIBUTORS)), db: Session = Depends(get_db)):
+    p = _get_product_or_404(db, product_id)
+    row = db.get(ProductImage, image_id)
+    if not row or row.product_id != p.id:
+        raise HTTPException(status_code=404, detail="Image not found.")
+    db.delete(row)
+    record_audit(db, actor_id=user.id, action="product.image.remove", entity_type="product", entity_id=p.id,
+                 summary=f"Image removed from {p.name}")
+    db.commit()
+    return {"ok": True}
 
 
 # --- Pack sizes ---------------------------------------------------------

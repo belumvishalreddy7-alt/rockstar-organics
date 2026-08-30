@@ -112,6 +112,29 @@ def test_document_upload_and_verification_flow(client, super_admin):
     assert verify.json()["verification_status"] == "verified"
 
 
+def test_product_image_upload_and_removal(client, super_admin):
+    _, email, password = super_admin
+    _login(client, email, password)
+    pid = _create_draft_product(client, sku="SKU-EXT-IMAGE")
+
+    upload = client.post(f"/api/v1/media/products/{pid}/images?alt_text=Front%20of%20pack",
+                          files={"file": ("front.jpg", b"\xff\xd8\xff" + b"x" * 20, "image/jpeg")})
+    assert upload.status_code == 200, upload.text
+    image_id = upload.json()["id"]
+
+    listed = client.get("/api/v1/products").json()["items"]
+    product = next(p for p in listed if p["id"] == pid)
+    assert len(product["images"]) == 1
+    assert product["images"][0]["id"] == image_id
+
+    remove = client.delete(f"/api/v1/products/{pid}/images/{image_id}")
+    assert remove.status_code == 200
+
+    listed_after = client.get("/api/v1/products").json()["items"]
+    product_after = next(p for p in listed_after if p["id"] == pid)
+    assert product_after["images"] == []
+
+
 def test_dealer_has_no_product_access(client, approved_dealer, super_admin):
     """Product creation/upload is owner (super_admin) + manager
     (admin, content_manager) only - a dealer cannot create a product, add a

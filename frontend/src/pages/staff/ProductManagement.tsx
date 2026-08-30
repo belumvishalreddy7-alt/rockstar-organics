@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError, uploadFile } from "../../api/client";
+import { api, ApiError, mediaUrl, uploadFile } from "../../api/client";
 import { EmptyState } from "../../components/EmptyState";
 import { StatusBadge } from "../../components/StatusBadge";
 
@@ -81,6 +81,11 @@ export function ProductManagement() {
     },
     onSuccess: invalidate,
     onError: onErr,
+  });
+
+  const removeImage = useMutation({
+    mutationFn: ({ id, imageId }: { id: string; imageId: string }) => api.del(`/products/${id}/images/${imageId}`),
+    onSuccess: invalidate, onError: onErr,
   });
 
   const addPackSize = useMutation({
@@ -231,6 +236,7 @@ export function ProductManagement() {
                 <td colSpan={4}>
                   <ProductDetailPanel
                     product={p}
+                    onRemoveImage={(imageId) => removeImage.mutate({ id: p.id, imageId })}
                     onAddPackSize={(body) => addPackSize.mutate({ id: p.id, body })}
                     onRemovePackSize={(itemId) => removePackSize.mutate({ id: p.id, itemId })}
                     onAddCrop={(body) => addCrop.mutate({ id: p.id, body })}
@@ -256,12 +262,13 @@ export function ProductManagement() {
 }
 
 function ProductDetailPanel({
-  product, onAddPackSize, onRemovePackSize, onAddCrop, onRemoveCrop,
+  product, onRemoveImage, onAddPackSize, onRemovePackSize, onAddCrop, onRemoveCrop,
   onAddClaim, onVerifyClaim, onRemoveClaim,
   onAddCertification, onVerifyCertification, onRemoveCertification,
   onUploadDocument, onVerifyDocument, onRemoveDocument,
 }: {
   product: ProductRow;
+  onRemoveImage: (id: string) => void;
   onAddPackSize: (body: Record<string, string>) => void; onRemovePackSize: (id: string) => void;
   onAddCrop: (body: Record<string, string>) => void; onRemoveCrop: (id: string) => void;
   onAddClaim: (body: Record<string, string>) => void; onVerifyClaim: (id: string, status: string) => void; onRemoveClaim: (id: string) => void;
@@ -277,6 +284,22 @@ function ProductDetailPanel({
 
   return (
     <div className="panel" style={{ background: "var(--surface-alt, #f7f7f5)" }}>
+      <h3>Images</h3>
+      {product.images.length === 0 && <p className="muted">No images uploaded yet.</p>}
+      <div className="inline" style={{ flexWrap: "wrap", alignItems: "flex-start" }}>
+        {product.images.map((img) => (
+          <div key={img.id} style={{ width: 120 }}>
+            <img
+              src={mediaUrl(`/api/v1/media/public/${img.file_path.replace(/^public\//, "")}`)}
+              alt={img.alt_text || ""}
+              style={{ width: "100%", height: 90, objectFit: "cover", borderRadius: "var(--radius-sm)", border: "1px solid var(--color-border)" }}
+            />
+            <p className="small muted" style={{ margin: "4px 0" }}>{img.alt_text || "No alt text"}</p>
+            <button className="btn btn-danger btn-sm" onClick={() => onRemoveImage(img.id)}>Remove</button>
+          </div>
+        ))}
+      </div>
+
       <h3>Pack sizes</h3>
       <ul>
         {product.pack_size_records.map((ps) => (
