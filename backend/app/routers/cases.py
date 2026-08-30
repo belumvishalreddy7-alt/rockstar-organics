@@ -56,8 +56,12 @@ def list_cases(status: str | None = None, district: str | None = None,
     if district:
         query = query.filter(FarmerSupportCase.district == district)
     cases = query.order_by(FarmerSupportCase.created_at.desc()).all()
+    farmer_ids = {c.farmer_id for c in cases}
+    farmers = {u.id: u for u in db.query(User).filter(User.id.in_(farmer_ids)).all()} if farmer_ids else {}
     return [{"id": c.id, "reference_number": c.reference_number, "title": c.title, "status": c.status,
-             "district": c.district, "priority": c.priority, "severity": c.severity} for c in cases]
+             "district": c.district, "priority": c.priority, "severity": c.severity,
+             "farmer_name": farmers[c.farmer_id].full_name if c.farmer_id in farmers else None,
+             "farmer_phone": farmers[c.farmer_id].phone if c.farmer_id in farmers else None} for c in cases]
 
 
 def _get_case_for_viewer(db: Session, case_id: str, user: User) -> FarmerSupportCase:

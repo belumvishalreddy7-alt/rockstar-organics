@@ -67,7 +67,7 @@ def list_applications(status: str | None = None, user: User = Depends(require_ro
     items = query.order_by(DistributorApplication.created_at.desc()).all()
     return [
         {"id": a.id, "reference_number": a.reference_number, "business_name": a.business_name, "territory": a.territory,
-         "status": a.status, "created_at": a.created_at.isoformat()}
+         "phone": a.phone, "status": a.status, "created_at": a.created_at.isoformat()}
         for a in items
     ]
 

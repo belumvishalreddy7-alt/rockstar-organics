@@ -3,8 +3,12 @@ import { useState } from "react";
 import { api } from "../../api/client";
 import { EmptyState } from "../../components/EmptyState";
 import { StatusBadge } from "../../components/StatusBadge";
+import { PhoneContact } from "../../components/PhoneContact";
 
-interface CaseRow { id: string; reference_number: string; title: string; status: string; district: string; priority: string; }
+interface CaseRow {
+  id: string; reference_number: string; title: string; status: string; district: string; priority: string;
+  farmer_name: string | null; farmer_phone: string | null;
+}
 interface Match { dealer_id: string; business_name: string; score: number; reasons: string[]; }
 
 export function CaseQueue() {
@@ -34,12 +38,14 @@ export function CaseQueue() {
       <h2>Farmer support cases</h2>
       <div className="table-scroll">
         <table className="data-table">
-          <thead><tr><th>Reference</th><th>Title</th><th>District</th><th>Priority</th><th>Status</th><th>Actions</th></tr></thead>
+          <thead><tr><th>Reference</th><th>Title</th><th>Farmer</th><th>Phone</th><th>District</th><th>Priority</th><th>Status</th><th>Actions</th></tr></thead>
           <tbody>
             {data.map((c) => (
               <>
                 <tr key={c.id}>
-                  <td>{c.reference_number}</td><td>{c.title}</td><td>{c.district}</td><td>{c.priority}</td>
+                  <td>{c.reference_number}</td><td>{c.title}</td><td>{c.farmer_name || "—"}</td>
+                  <td><PhoneContact phone={c.farmer_phone} /></td>
+                  <td>{c.district}</td><td>{c.priority}</td>
                   <td><StatusBadge status={c.status} /></td>
                   <td>
                     <button className="btn btn-ghost btn-sm" onClick={() => setExpandedCase(expandedCase === c.id ? null : c.id)}>
@@ -49,7 +55,7 @@ export function CaseQueue() {
                 </tr>
                 {expandedCase === c.id && (
                   <tr>
-                    <td colSpan={6}>
+                    <td colSpan={8}>
                       <div className="panel">
                         <h3>Transparent dealer matches</h3>
                         {matches && matches.length === 0 && <p className="small muted">No matching dealers found for this district/mandal.</p>}

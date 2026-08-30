@@ -38,7 +38,7 @@ def list_enquiries(status: str | None = None, user: User = Depends(require_roles
         query = query.filter(Enquiry.status == status)
     items = query.order_by(Enquiry.created_at.desc()).all()
     return [{"id": e.id, "reference_number": e.reference_number, "enquiry_type": e.enquiry_type, "name": e.name,
-             "status": e.status, "created_at": e.created_at.isoformat()} for e in items]
+             "phone": e.phone, "status": e.status, "created_at": e.created_at.isoformat()} for e in items]
 
 
 @router.post("/{enquiry_id}/assign/{staff_id}")

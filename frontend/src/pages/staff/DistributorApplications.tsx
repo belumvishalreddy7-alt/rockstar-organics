@@ -3,8 +3,9 @@ import { useState } from "react";
 import { api } from "../../api/client";
 import { EmptyState } from "../../components/EmptyState";
 import { StatusBadge } from "../../components/StatusBadge";
+import { PhoneContact } from "../../components/PhoneContact";
 
-interface AppRow { id: string; reference_number: string; business_name: string; territory: string; status: string; created_at: string; }
+interface AppRow { id: string; reference_number: string; business_name: string; territory: string; phone: string | null; status: string; created_at: string; }
 
 export function DistributorApplications() {
   const qc = useQueryClient();
@@ -35,11 +36,12 @@ export function DistributorApplications() {
       {credsMessage && <div className="alert alert-success">{credsMessage}</div>}
       <div className="table-scroll">
         <table className="data-table">
-          <thead><tr><th>Reference</th><th>Business</th><th>Territory</th><th>Status</th><th>Actions</th></tr></thead>
+          <thead><tr><th>Reference</th><th>Business</th><th>Territory</th><th>Phone</th><th>Status</th><th>Actions</th></tr></thead>
           <tbody>
             {data.map((a) => (
               <tr key={a.id}>
                 <td>{a.reference_number}</td><td>{a.business_name}</td><td>{a.territory}</td>
+                <td><PhoneContact phone={a.phone} /></td>
                 <td><StatusBadge status={a.status} /></td>
                 <td className="inline">
                   {["new", "under_review", "information_required", "contacted", "on_hold"].includes(a.status) && (
