@@ -4,7 +4,7 @@ import { api, ApiError, mediaUrl, uploadFile } from "../../api/client";
 import { EmptyState } from "../../components/EmptyState";
 import { StatusBadge } from "../../components/StatusBadge";
 
-interface PackSize { id: string; quantity: string; unit: string; packaging_type: string | null; sku: string | null; availability_status: string; }
+interface PackSize { id: string; quantity: string; unit: string; packaging_type: string | null; sku: string | null; price: number | null; availability_status: string; }
 interface Crop { id: string; crop_name: string; crop_category: string | null; target_use: string | null; application_stage: string | null; }
 interface Claim { id: string; claim_text: string; category: string; source_evidence: string | null; verification_status: string; }
 interface Certification { id: string; name: string; issuing_organization: string | null; certificate_number: string | null; verification_status: string; }
@@ -36,6 +36,7 @@ const STATUS_VALUES = ["draft", "pending_verification", "in_review", "revision_r
 
 const EMPTY_FORM = {
   sku: "", name: "", slug: "", short_description: "", full_description: "", precautions: "",
+  benefits: "", recommended_crops: "", application_method: "", dosage_value: "", dosage_unit: "",
   active_ingredients: "", nutrient_content: "", concentration: "", formulation: "", grade: "", physical_form: "", technical_specifications: "",
 };
 
@@ -89,7 +90,7 @@ export function ProductManagement() {
   });
 
   const addPackSize = useMutation({
-    mutationFn: ({ id, body }: { id: string; body: Record<string, string> }) => api.post(`/products/${id}/pack-sizes`, body),
+    mutationFn: ({ id, body }: { id: string; body: Record<string, string | number | null> }) => api.post(`/products/${id}/pack-sizes`, body),
     onSuccess: invalidate, onError: onErr,
   });
   const removePackSize = useMutation({
@@ -173,6 +174,13 @@ export function ProductManagement() {
               <div className="field"><label htmlFor="short_description">Short description</label><input type="text" id="short_description" value={form.short_description} onChange={(e) => setForm({ ...form, short_description: e.target.value })} /></div>
             </div>
             <div className="field"><label htmlFor="full_description">Full description</label><textarea id="full_description" value={form.full_description} onChange={(e) => setForm({ ...form, full_description: e.target.value })} /></div>
+            <div className="field"><label htmlFor="benefits">Uses / benefits</label><textarea id="benefits" value={form.benefits} onChange={(e) => setForm({ ...form, benefits: e.target.value })} /></div>
+            <div className="grid cols-2">
+              <div className="field"><label htmlFor="recommended_crops">Recommended crops</label><input type="text" id="recommended_crops" value={form.recommended_crops} onChange={(e) => setForm({ ...form, recommended_crops: e.target.value })} /></div>
+              <div className="field"><label htmlFor="application_method">Application method</label><input type="text" id="application_method" value={form.application_method} onChange={(e) => setForm({ ...form, application_method: e.target.value })} /></div>
+              <div className="field"><label htmlFor="dosage_value">Dosage value</label><input type="text" id="dosage_value" placeholder="e.g. 2" value={form.dosage_value} onChange={(e) => setForm({ ...form, dosage_value: e.target.value })} /></div>
+              <div className="field"><label htmlFor="dosage_unit">Dosage unit</label><input type="text" id="dosage_unit" placeholder="e.g. ml/L, g/L" value={form.dosage_unit} onChange={(e) => setForm({ ...form, dosage_unit: e.target.value })} /></div>
+            </div>
             <div className="field"><label htmlFor="precautions">Precautions</label><textarea id="precautions" value={form.precautions} onChange={(e) => setForm({ ...form, precautions: e.target.value })} /></div>
 
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowComposition((s) => !s)}>
@@ -269,13 +277,13 @@ function ProductDetailPanel({
 }: {
   product: ProductRow;
   onRemoveImage: (id: string) => void;
-  onAddPackSize: (body: Record<string, string>) => void; onRemovePackSize: (id: string) => void;
+  onAddPackSize: (body: Record<string, string | number | null>) => void; onRemovePackSize: (id: string) => void;
   onAddCrop: (body: Record<string, string>) => void; onRemoveCrop: (id: string) => void;
   onAddClaim: (body: Record<string, string>) => void; onVerifyClaim: (id: string, status: string) => void; onRemoveClaim: (id: string) => void;
   onAddCertification: (body: Record<string, string>) => void; onVerifyCertification: (id: string, status: string) => void; onRemoveCertification: (id: string) => void;
   onUploadDocument: (file: File, documentType: string, title: string) => void; onVerifyDocument: (id: string, status: string) => void; onRemoveDocument: (id: string) => void;
 }) {
-  const [packSize, setPackSize] = useState({ quantity: "", unit: "", packaging_type: "" });
+  const [packSize, setPackSize] = useState({ quantity: "", unit: "", packaging_type: "", price: "" });
   const [crop, setCrop] = useState({ crop_name: "", crop_category: "", target_use: "", application_stage: "" });
   const [claim, setClaim] = useState({ claim_text: "", category: "benefit", source_evidence: "" });
   const [cert, setCert] = useState({ name: "", issuing_organization: "", certificate_number: "" });
@@ -300,20 +308,29 @@ function ProductDetailPanel({
         ))}
       </div>
 
-      <h3>Pack sizes</h3>
+      <h3>Pack sizes &amp; rate</h3>
       <ul>
         {product.pack_size_records.map((ps) => (
           <li key={ps.id}>
-            {ps.quantity} {ps.unit}{ps.packaging_type ? ` (${ps.packaging_type})` : ""} - {ps.availability_status}
+            {ps.quantity} {ps.unit}{ps.packaging_type ? ` (${ps.packaging_type})` : ""} - {ps.price != null ? `₹${ps.price.toFixed(2)}` : "rate pending"} - {ps.availability_status}
             <button className="btn btn-ghost btn-sm" onClick={() => onRemovePackSize(ps.id)}>Remove</button>
           </li>
         ))}
         {product.pack_size_records.length === 0 && <li className="muted">None added yet.</li>}
       </ul>
-      <form className="inline" onSubmit={(e) => { e.preventDefault(); if (!packSize.quantity || !packSize.unit) return; onAddPackSize(packSize); setPackSize({ quantity: "", unit: "", packaging_type: "" }); }}>
+      <form className="inline" onSubmit={(e) => {
+        e.preventDefault();
+        if (!packSize.quantity || !packSize.unit) return;
+        onAddPackSize({
+          quantity: packSize.quantity, unit: packSize.unit, packaging_type: packSize.packaging_type || null,
+          price: packSize.price ? Number(packSize.price) : null,
+        });
+        setPackSize({ quantity: "", unit: "", packaging_type: "", price: "" });
+      }}>
         <input placeholder="Quantity (e.g. 500)" value={packSize.quantity} onChange={(e) => setPackSize({ ...packSize, quantity: e.target.value })} style={{ width: 120 }} />
-        <input placeholder="Unit (e.g. g, kg, L)" value={packSize.unit} onChange={(e) => setPackSize({ ...packSize, unit: e.target.value })} style={{ width: 100 }} />
+        <input placeholder="Unit (e.g. ml, L, g, kg)" value={packSize.unit} onChange={(e) => setPackSize({ ...packSize, unit: e.target.value })} style={{ width: 110 }} />
         <input placeholder="Packaging type" value={packSize.packaging_type} onChange={(e) => setPackSize({ ...packSize, packaging_type: e.target.value })} style={{ width: 140 }} />
+        <input type="number" min="0" step="0.01" placeholder="Rate (₹)" value={packSize.price} onChange={(e) => setPackSize({ ...packSize, price: e.target.value })} style={{ width: 110 }} />
         <button className="btn btn-secondary btn-sm" type="submit">Add pack size</button>
       </form>
 

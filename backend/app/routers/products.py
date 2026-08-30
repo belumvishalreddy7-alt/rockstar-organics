@@ -116,7 +116,8 @@ def _rating_summaries(db: Session, product_ids: list[str]) -> dict[str, dict]:
 
 def _pack_size_out(ps: ProductPackSize) -> dict:
     return {"id": ps.id, "quantity": ps.quantity, "unit": ps.unit, "packaging_type": ps.packaging_type,
-            "sku": ps.sku, "availability_status": ps.availability_status}
+            "sku": ps.sku, "price": float(ps.price) if ps.price is not None else None,
+            "availability_status": ps.availability_status}
 
 
 def _crop_out(c: ProductCrop) -> dict:

@@ -184,6 +184,7 @@ class ProductPackSizeCreate(BaseModel):
     unit: str = Field(min_length=1, max_length=20)
     packaging_type: str | None = Field(default=None, max_length=60)
     sku: str | None = Field(default=None, max_length=60)
+    price: float | None = Field(default=None, ge=0)
     availability_status: str = "available"
 
     @field_validator("availability_status")

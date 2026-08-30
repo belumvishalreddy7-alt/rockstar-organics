@@ -37,6 +37,38 @@ def test_pack_sizes_and_crops_can_be_added_and_removed(client, super_admin):
     assert remaining == []
 
 
+def test_pack_size_rate_is_optional_and_public_when_set(client, super_admin):
+    _, email, password = super_admin
+    _login(client, email, password)
+    pid = _create_draft_product(client, sku="SKU-EXT-RATE")
+
+    no_price = client.post(f"/api/v1/products/{pid}/pack-sizes", json={"quantity": "1", "unit": "L"})
+    assert no_price.status_code == 200, no_price.text
+    assert no_price.json()["price"] is None
+
+    with_price = client.post(f"/api/v1/products/{pid}/pack-sizes", json={"quantity": "500", "unit": "ml", "price": 149.5})
+    assert with_price.status_code == 200, with_price.text
+    assert with_price.json()["price"] == 149.5
+
+    negative_price = client.post(f"/api/v1/products/{pid}/pack-sizes", json={"quantity": "250", "unit": "ml", "price": -10})
+    assert negative_price.status_code == 422
+
+    client.post(f"/api/v1/products/{pid}/transition/in_review", json={})
+    client.post(f"/api/v1/products/{pid}/transition/approved", json={})
+    cat = client.post("/api/v1/categories", json={"name": f"Rate Cat {uuid.uuid4().hex[:6]}", "slug": f"rate-cat-{uuid.uuid4().hex[:6]}"})
+    client.put(f"/api/v1/products/{pid}", json={
+        "sku": "SKU-EXT-RATE", "name": "Extension Test Product", "slug": "extension-test-sku-ext-rate",
+        "category_id": cat.json()["id"], "precautions": "Keep away from children.", "full_description": "desc",
+    })
+    publish = client.post(f"/api/v1/products/{pid}/transition/published", json={})
+    assert publish.status_code == 200, publish.text
+
+    public = client.get("/api/v1/products/public/extension-test-sku-ext-rate")
+    prices = {ps["quantity"]: ps["price"] for ps in public.json()["pack_size_records"]}
+    assert prices["1"] is None
+    assert prices["500"] == 149.5
+
+
 def test_claim_is_hidden_publicly_until_verified(client, super_admin):
     _, email, password = super_admin
     _login(client, email, password)

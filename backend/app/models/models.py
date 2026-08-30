@@ -291,6 +291,10 @@ class ProductPackSize(Base):
     unit: Mapped[str] = mapped_column(String(20), nullable=False)
     packaging_type: Mapped[str | None] = mapped_column(String(60), nullable=True)
     sku: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    # The rate for this specific pack size (e.g. a 500 ml bottle prices
+    # differently from a 1 L one) - never a single product-wide price,
+    # since real agri-input pricing varies by pack size. INR, staff-entered.
+    price: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
     availability_status: Mapped[str] = mapped_column(String(20), default="available")  # available|out_of_stock|discontinued
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
