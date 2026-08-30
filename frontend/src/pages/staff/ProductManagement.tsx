@@ -181,7 +181,8 @@ export function ProductManagement() {
         <div className="panel">
           <form onSubmit={(e) => {
             e.preventDefault();
-            if (newImage && !newImageAlt.trim()) { setError("Image alt text is required when a product image is attached."); return; }
+            if (!newImage) { setError("A product image is required to save this draft."); return; }
+            if (!newImageAlt.trim()) { setError("Image alt text is required when a product image is attached."); return; }
             setError(null);
             createProduct.mutate();
           }}>
@@ -203,7 +204,7 @@ export function ProductManagement() {
 
             <div className="grid cols-2">
               <div className="field">
-                <label htmlFor="new-image">Product image (optional)</label>
+                <label htmlFor="new-image">Product image (required)</label>
                 <input id="new-image" type="file" accept="image/jpeg,image/png,image/webp"
                   onChange={(e) => setNewImage(e.target.files?.[0] || null)} />
               </div>
