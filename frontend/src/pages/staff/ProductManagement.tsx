@@ -50,6 +50,8 @@ export function ProductManagement() {
   const [showComposition, setShowComposition] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [newImage, setNewImage] = useState<File | null>(null);
+  const [newImageAlt, setNewImageAlt] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
@@ -61,8 +63,16 @@ export function ProductManagement() {
   const onErr = (e: unknown) => setError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Something went wrong.");
 
   const createProduct = useMutation({
-    mutationFn: () => api.post("/products", form),
-    onSuccess: () => { setShowForm(false); setForm(EMPTY_FORM); invalidate(); },
+    mutationFn: async () => {
+      const created = await api.post<{ id: string }>("/products", form);
+      if (newImage) {
+        const formData = new FormData();
+        formData.append("file", newImage);
+        await uploadFile(`/media/products/${created.id}/images?alt_text=${encodeURIComponent(newImageAlt)}`, formData);
+      }
+      return created;
+    },
+    onSuccess: () => { setShowForm(false); setForm(EMPTY_FORM); setNewImage(null); setNewImageAlt(""); invalidate(); },
     onError: onErr,
   });
 
@@ -158,7 +168,10 @@ export function ProductManagement() {
     <div>
       <div className="section-heading">
         <h2>Products</h2>
-        <button className="btn btn-primary btn-sm" onClick={() => setShowForm((s) => !s)}>
+        <button className="btn btn-primary btn-sm" onClick={() => {
+          setShowForm((s) => !s);
+          setNewImage(null); setNewImageAlt(""); setError(null);
+        }}>
           {showForm ? "Cancel" : "New draft product"}
         </button>
       </div>
@@ -166,7 +179,12 @@ export function ProductManagement() {
 
       {showForm && (
         <div className="panel">
-          <form onSubmit={(e) => { e.preventDefault(); createProduct.mutate(); }}>
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            if (newImage && !newImageAlt.trim()) { setError("Image alt text is required when a product image is attached."); return; }
+            setError(null);
+            createProduct.mutate();
+          }}>
             <div className="grid cols-2">
               <div className="field"><label htmlFor="sku">SKU</label><input type="text" id="sku" required value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} /></div>
               <div className="field"><label htmlFor="name">Name</label><input type="text" id="name" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
@@ -182,6 +200,20 @@ export function ProductManagement() {
               <div className="field"><label htmlFor="dosage_unit">Dosage unit</label><input type="text" id="dosage_unit" placeholder="e.g. ml/L, g/L" value={form.dosage_unit} onChange={(e) => setForm({ ...form, dosage_unit: e.target.value })} /></div>
             </div>
             <div className="field"><label htmlFor="precautions">Precautions</label><textarea id="precautions" value={form.precautions} onChange={(e) => setForm({ ...form, precautions: e.target.value })} /></div>
+
+            <div className="grid cols-2">
+              <div className="field">
+                <label htmlFor="new-image">Product image (optional)</label>
+                <input id="new-image" type="file" accept="image/jpeg,image/png,image/webp"
+                  onChange={(e) => setNewImage(e.target.files?.[0] || null)} />
+              </div>
+              {newImage && (
+                <div className="field">
+                  <label htmlFor="new-image-alt">Image alt text (required for this image)</label>
+                  <input id="new-image-alt" type="text" value={newImageAlt} onChange={(e) => setNewImageAlt(e.target.value)} />
+                </div>
+              )}
+            </div>
 
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowComposition((s) => !s)}>
               {showComposition ? "Hide composition fields" : "Add composition / technical specifications"}
