@@ -46,6 +46,7 @@ def _public_shape(p: AgriculturePhoto) -> dict:
 def _admin_shape(p: AgriculturePhoto) -> dict:
     base = _public_shape(p)
     base.update({
+        "admin_image_url": f"/api/v1/media/gallery/{p.id}/admin",
         "status": p.status, "usage_rights_verified": p.usage_rights_verified,
         "usage_rights_notes": p.usage_rights_notes, "uploaded_by_id": p.uploaded_by_id,
         "reviewed_by_id": p.reviewed_by_id,
@@ -119,3 +120,16 @@ def change_status(photo_id: str, status: str, payload: AgriculturePhotoStatusCha
                  summary=f"Photo {photo.title} -> {status}")
     db.commit()
     return _admin_shape(photo)
+
+
+@router.delete("/{photo_id}")
+def delete_photo(photo_id: str, user: User = Depends(require_roles(*CONTENT_VERIFIERS)), db: Session = Depends(get_db)):
+    photo = db.get(AgriculturePhoto, photo_id)
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found.")
+    title = photo.title
+    db.delete(photo)
+    record_audit(db, actor_id=user.id, action="agriculture_photo.delete", entity_type="agriculture_photo", entity_id=photo_id,
+                 summary=f"Agriculture photo removed: {title}")
+    db.commit()
+    return {"ok": True}

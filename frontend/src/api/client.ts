@@ -95,6 +95,22 @@ export const api = {
 };
 
 /**
+ * Some images (e.g. an unpublished agriculture photo) are deliberately not
+ * public - the serving endpoint requires the session cookie. A plain
+ * `<img src>` can't do that for a cross-origin API (SameSite=Lax cookies
+ * aren't sent on cross-site subresource requests), so this fetches the
+ * bytes with credentials and hands back a local object URL to assign as
+ * the img src instead. Caller is responsible for URL.revokeObjectURL
+ * once it's no longer displayed.
+ */
+export async function fetchAuthedImageUrl(path: string): Promise<string> {
+  const res = await fetch(`${API_BASE_URL}${path}`, { credentials: "include" });
+  if (!res.ok) throw new ApiError(res.status, `Could not load image (${res.status})`);
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}
+
+/**
  * File uploads use FormData (never JSON), so they go through this helper
  * rather than `api.post` - but they still need the session cookie and the
  * CSRF header like any other mutating request.

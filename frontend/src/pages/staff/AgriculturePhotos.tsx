@@ -1,12 +1,35 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { api, ApiError, uploadFile, mediaUrl } from "../../api/client";
+import { useEffect, useState } from "react";
+import { api, ApiError, uploadFile, fetchAuthedImageUrl } from "../../api/client";
 import { EmptyState } from "../../components/EmptyState";
 import { StatusBadge } from "../../components/StatusBadge";
 
 interface PhotoRow {
   id: string; title: string; category: string; status: string; usage_rights_verified: boolean;
-  rejection_reason: string | null; image_url: string;
+  rejection_reason: string | null; image_url: string; admin_image_url: string;
+}
+
+/** The photo's own file isn't public until it's published, so the thumbnail
+ * is fetched with the session cookie and shown as a local object URL. */
+function PhotoThumbnail({ photo }: { photo: PhotoRow }) {
+  const [src, setSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    let cancelled = false;
+    fetchAuthedImageUrl(photo.admin_image_url).then((url) => {
+      if (cancelled) { URL.revokeObjectURL(url); return; }
+      objectUrl = url;
+      setSrc(url);
+    }).catch(() => setSrc(null));
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [photo.admin_image_url]);
+
+  if (!src) return <div style={{ width: 60, height: 40, background: "#eee", borderRadius: 4 }} />;
+  return <img src={src} alt={photo.title} style={{ width: 60, height: 40, objectFit: "cover", borderRadius: 4 }} />;
 }
 
 const CATEGORIES = [
@@ -58,6 +81,12 @@ export function AgriculturePhotos() {
     onError: (e: unknown) => setActionError(e instanceof ApiError ? e.message : "Action failed."),
   });
 
+  const removePhoto = useMutation({
+    mutationFn: (id: string) => api.del(`/media/agriculture/${id}`),
+    onSuccess: () => { setActionError(null); qc.invalidateQueries({ queryKey: ["agriculture-photos-admin"] }); },
+    onError: (e: unknown) => setActionError(e instanceof ApiError ? e.message : "Could not remove this photo."),
+  });
+
   return (
     <div>
       <h2>Agriculture photo gallery</h2>
@@ -101,7 +130,7 @@ export function AgriculturePhotos() {
             <tbody>
               {data.map((p) => (
                 <tr key={p.id}>
-                  <td><img src={mediaUrl(p.image_url)} alt={p.title} style={{ width: 60, height: 40, objectFit: "cover", borderRadius: 4 }} /></td>
+                  <td><PhotoThumbnail photo={p} /></td>
                   <td>
                     {p.title}
                     {p.rejection_reason && <p className="small muted">Rejected: {p.rejection_reason}</p>}
@@ -132,6 +161,14 @@ export function AgriculturePhotos() {
                     )}
                     {p.status !== "archived" && <button className="btn btn-ghost btn-sm" onClick={() => changeStatus.mutate({ id: p.id, status: "archived" })}>Archive</button>}
                     {p.status === "archived" && <button className="btn btn-ghost btn-sm" onClick={() => changeStatus.mutate({ id: p.id, status: "draft" })}>Restore to draft</button>}
+                    <button
+                      className="btn btn-danger btn-sm"
+                      onClick={() => {
+                        if (window.confirm(`Permanently remove "${p.title}"? This cannot be undone.`)) removePhoto.mutate(p.id);
+                      }}
+                    >
+                      Remove
+                    </button>
                   </td>
                 </tr>
               ))}

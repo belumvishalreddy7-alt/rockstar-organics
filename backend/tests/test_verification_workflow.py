@@ -131,3 +131,37 @@ def test_agriculture_photo_rejection_and_resubmission(client, super_admin):
     assert approve.status_code == 200
     assert approve.json()["approved_by_id"]
     client.post("/api/v1/auth/logout")
+
+
+def test_agriculture_photo_admin_preview_and_removal(client, super_admin, sales_manager):
+    _, email, password = super_admin
+    _login(client, email, password)
+    upload = client.post("/api/v1/media/agriculture-photos", files={"file": ("f.jpg", b"\xff\xd8\xff\xe0x", "image/jpeg")})
+    media_id = upload.json()["id"]
+    create = client.post("/api/v1/media/agriculture", json={
+        "title": "Draft Field", "category": "fields", "alt_text": "A field.", "media_id": media_id,
+    })
+    photo_id = create.json()["id"]
+    assert create.json()["status"] == "draft"
+
+    # The photo isn't published yet - the public endpoint must 404, but the
+    # admin preview (what the review queue's thumbnail actually calls) works.
+    assert client.get(f"/api/v1/media/gallery/{photo_id}").status_code == 404
+    admin_preview = client.get(f"/api/v1/media/gallery/{photo_id}/admin")
+    assert admin_preview.status_code == 200
+    assert admin_preview.content == b"\xff\xd8\xff\xe0x"
+    client.post("/api/v1/auth/logout")
+
+    # A staff role outside CONTENT_VERIFIERS can't use the admin preview or delete.
+    _, sm_email, sm_password = sales_manager
+    _login(client, sm_email, sm_password)
+    assert client.get(f"/api/v1/media/gallery/{photo_id}/admin").status_code == 403
+    assert client.delete(f"/api/v1/media/agriculture/{photo_id}").status_code == 403
+    client.post("/api/v1/auth/logout")
+
+    _login(client, email, password)
+    deleted = client.delete(f"/api/v1/media/agriculture/{photo_id}")
+    assert deleted.status_code == 200
+    assert client.get(f"/api/v1/media/gallery/{photo_id}/admin").status_code == 404
+    assert client.delete("/api/v1/media/agriculture/nonexistent-id").status_code == 404
+    client.post("/api/v1/auth/logout")

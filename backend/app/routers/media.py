@@ -261,6 +261,23 @@ def serve_agriculture_photo(photo_id: str, db: Session = Depends(get_db)):
     return Response(content=content, media_type=record.content_type)
 
 
+@router.get("/gallery/{photo_id}/admin")
+def serve_agriculture_photo_for_review(photo_id: str, user: User = Depends(require_roles(*CONTENT_VERIFIERS)), db: Session = Depends(get_db)):
+    """Same image as serve_agriculture_photo, but for the staff review
+    queue - it has to work before a photo reaches "published", which is
+    exactly when a reviewer needs to actually look at it."""
+    photo = db.get(AgriculturePhoto, photo_id)
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found.")
+    record = db.get(MediaRecord, photo.media_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Photo not found.")
+    content = storage.load(record.file_path)
+    if content is None:
+        raise HTTPException(status_code=404, detail="Photo not found.")
+    return Response(content=content, media_type=record.content_type)
+
+
 @router.get("/certificates/{document_id}")
 def serve_company_document(document_id: str, db: Session = Depends(get_db)):
     """Public download endpoint for a company certificate/document - only
