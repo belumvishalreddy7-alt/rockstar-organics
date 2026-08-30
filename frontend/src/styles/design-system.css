@@ -233,11 +233,15 @@ legend { font-weight: 600; padding: 0 6px; }
   .main-nav a, .main-nav button.nav-link { width: 100%; text-align: left; padding: 12px 10px; min-height: 44px; box-sizing: border-box; display: flex; align-items: center; }
 }
 
-.dashboard-layout { display: grid; grid-template-columns: 220px 1fr; gap: 24px; align-items: start; }
-@media (max-width: 860px) {
-  .dashboard-layout { grid-template-columns: 1fr; }
-}
-.dashboard-nav { position: sticky; top: 20px; }
+/* Flex-wrap instead of a grid-with-breakpoint: the nav and content columns
+   wrap onto separate lines purely from running out of horizontal room
+   (220px nav + 280px min content + 24px gap = 524px), with no media query
+   involved at all. A breakpoint depends on the browser evaluating and
+   re-matching a media condition correctly; wrapping is intrinsic layout
+   behavior every flexbox-capable browser has always done the same way. */
+.dashboard-layout { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; }
+.dashboard-nav { flex: 0 1 220px; min-width: 180px; position: sticky; top: 20px; }
+.dashboard-layout > div:last-child { flex: 999 1 280px; min-width: 280px; }
 .dashboard-nav a { display: block; padding: 8px 10px; border-radius: var(--radius-sm); color: var(--color-text); text-decoration: none; font-size: 0.92rem; }
 .dashboard-nav a.active { background: var(--color-green-100); color: var(--color-green-900); font-weight: 600; }
 
