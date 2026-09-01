@@ -317,6 +317,14 @@ def delete_product(product_id: str, user: User = Depends(require_roles("super_ad
     if not p:
         raise HTTPException(status_code=404, detail="Product not found.")
     record_audit(db, actor_id=user.id, action="product.delete", entity_type="product", entity_id=p.id, summary=f"Permanently deleted product {p.name}")
+    # images/reviews cascade via their ORM relationship (cascade="all,
+    # delete-orphan" on Product), but pack sizes/crops/claims/
+    # certifications/documents are only ever queried ad hoc by product_id
+    # elsewhere in this router - no relationship means no cascade, so
+    # deleting a product with any of these left it 500ing on a foreign key
+    # violation instead of actually deleting anything.
+    for model in (ProductPackSize, ProductCrop, ProductClaim, ProductCertification, ProductDocument):
+        db.query(model).filter(model.product_id == p.id).delete()
     db.delete(p)
     db.commit()
     return {"ok": True}
