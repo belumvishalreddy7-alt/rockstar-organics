@@ -280,8 +280,11 @@ def serve_agriculture_photo_for_review(photo_id: str, user: User = Depends(requi
 
 @router.get("/certificates/{document_id}")
 def serve_company_document(document_id: str, db: Session = Depends(get_db)):
-    """Public download endpoint for a company certificate/document - only
-    serves documents that are both verified and explicitly published."""
+    """View endpoint for a company certificate/document - only serves
+    documents that are both verified and explicitly published.
+    Content-Disposition is "inline" (not "attachment") so it opens in the
+    browser rather than forcing a download - visitors can view a
+    certificate without a copy landing on their device."""
     doc = db.get(CompanyDocument, document_id)
     if not doc or not doc.is_published or doc.verification_status != "verified":
         raise HTTPException(status_code=404, detail="Document not found.")
@@ -293,7 +296,27 @@ def serve_company_document(document_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Document not found.")
     return Response(
         content=content, media_type=record.content_type,
-        headers={"Content-Disposition": f'attachment; filename="{record.original_filename}"'},
+        headers={"Content-Disposition": f'inline; filename="{record.original_filename}"'},
+    )
+
+
+@router.get("/certificates/{document_id}/admin")
+def serve_company_document_for_review(document_id: str, user: User = Depends(require_roles(*CONTENT_VERIFIERS)), db: Session = Depends(get_db)):
+    """Same file as serve_company_document, but for staff review - it has
+    to work before a document is verified/published, which is exactly
+    when a reviewer needs to look at it."""
+    doc = db.get(CompanyDocument, document_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    record = db.get(MediaRecord, doc.media_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    content = storage.load(record.file_path)
+    if content is None:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    return Response(
+        content=content, media_type=record.content_type,
+        headers={"Content-Disposition": f'inline; filename="{record.original_filename}"'},
     )
 
 

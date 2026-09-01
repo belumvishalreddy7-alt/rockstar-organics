@@ -1,12 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { api, ApiError, uploadFile } from "../../api/client";
+import { api, ApiError, fetchAuthedImageUrl, uploadFile } from "../../api/client";
 import { EmptyState } from "../../components/EmptyState";
 import { StatusBadge } from "../../components/StatusBadge";
 
 interface DocRow {
   id: string; title: string; document_type: string; verification_status: string; is_published: boolean;
   is_approved: boolean; is_archived: boolean; version: number; reference_number: string | null;
+  admin_view_url: string;
 }
 
 const DOCUMENT_TYPES = [
@@ -87,6 +88,19 @@ export function CompanyDocuments() {
                   <td>{d.is_approved ? "Yes" : "No"}</td>
                   <td>{d.is_published ? "Yes" : "No"}</td>
                   <td className="inline">
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={async () => {
+                        try {
+                          const url = await fetchAuthedImageUrl(d.admin_view_url);
+                          window.open(url, "_blank", "noopener,noreferrer");
+                        } catch {
+                          setMessage("Could not open this document.");
+                        }
+                      }}
+                    >
+                      View
+                    </button>
                     {!d.is_archived && d.verification_status !== "verified" && (
                       <button className="btn btn-primary btn-sm" onClick={() => action.mutate({ id: d.id, path: "verify/verified" })}>Verify</button>
                     )}

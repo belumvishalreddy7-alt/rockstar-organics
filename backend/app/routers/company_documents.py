@@ -37,6 +37,7 @@ def _public_shape(d: CompanyDocument) -> dict:
 def _admin_shape(d: CompanyDocument) -> dict:
     base = _public_shape(d)
     base.update({
+        "admin_view_url": f"/api/v1/media/certificates/{d.id}/admin",
         "is_published": d.is_published, "notes": d.notes,
         "uploaded_by_id": d.uploaded_by_id, "reviewed_by_id": d.reviewed_by_id,
         "reviewed_at": d.reviewed_at.isoformat() if d.reviewed_at else None,

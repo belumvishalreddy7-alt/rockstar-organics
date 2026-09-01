@@ -77,6 +77,35 @@ def test_administrator_can_approve_publish_and_archive_certificate(client, super
     client.post("/api/v1/auth/logout")
 
 
+def test_certificate_is_view_only_and_staff_can_preview_before_publish(client, super_admin, sales_manager):
+    _, admin_email, admin_password = super_admin
+    doc_id = _upload_and_verify_document(client, super_admin)
+
+    # not published yet - the public view endpoint 404s, but a staff
+    # reviewer can still open it via the admin preview endpoint
+    assert client.get(f"/api/v1/media/certificates/{doc_id}").status_code == 404
+    _login(client, admin_email, admin_password)
+    admin_preview = client.get(f"/api/v1/media/certificates/{doc_id}/admin")
+    assert admin_preview.status_code == 200
+    assert admin_preview.content == b"%PDF-1.4 x"
+    client.post("/api/v1/auth/logout")
+
+    _, sm_email, sm_password = sales_manager
+    _login(client, sm_email, sm_password)
+    assert client.get(f"/api/v1/media/certificates/{doc_id}/admin").status_code == 403
+    client.post("/api/v1/auth/logout")
+
+    _login(client, admin_email, admin_password)
+    client.post(f"/api/v1/company/documents/{doc_id}/approve")
+    client.post(f"/api/v1/company/documents/{doc_id}/publish")
+    client.post("/api/v1/auth/logout")
+
+    published = client.get(f"/api/v1/media/certificates/{doc_id}")
+    assert published.status_code == 200
+    # inline, not attachment - opens in the browser instead of forcing a download
+    assert published.headers["content-disposition"].startswith("inline")
+
+
 def test_re_verification_resets_approval(client, super_admin):
     """If a verified+approved document is sent back through verification
     (e.g. an expiry was found), its approval must not silently survive -
