@@ -38,9 +38,19 @@
   --max-width: 1180px;
 }
 
-* { box-sizing: border-box; }
+*, *::before, *::after { box-sizing: border-box; }
 
 html, body, #root { height: 100%; }
+
+html, body {
+  width: 100%;
+  max-width: 100%;
+  /* Safety net, not a fix in itself - the actual overflow sources (the
+     sticky dashboard nav below, unconstrained images) are fixed at their
+     own root cause. This just stops any future one-off regression from
+     producing a page-wide horizontal scrollbar. */
+  overflow-x: hidden;
+}
 
 body {
   margin: 0;
@@ -52,6 +62,8 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+img { max-width: 100%; height: auto; }
+
 h1, h2, h3, h4 {
   font-family: var(--font-serif);
   color: var(--color-green-900);
@@ -61,11 +73,11 @@ h1, h2, h3, h4 {
   letter-spacing: -0.01em;
 }
 
-h1 { font-size: 2.15rem; }
-h2 { font-size: 1.55rem; }
+h1 { font-size: clamp(1.6rem, 5vw + 0.5rem, 2.15rem); }
+h2 { font-size: clamp(1.25rem, 3vw + 0.5rem, 1.55rem); }
 h3 { font-size: 1.15rem; }
 
-p { margin: 0 0 1em 0; }
+p { margin: 0 0 1em 0; overflow-wrap: anywhere; }
 
 a { color: var(--color-green-700); }
 a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
@@ -240,8 +252,27 @@ legend { font-weight: 600; padding: 0 6px; }
    re-matching a media condition correctly; wrapping is intrinsic layout
    behavior every flexbox-capable browser has always done the same way. */
 .dashboard-layout { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; }
-.dashboard-nav { flex: 0 1 220px; min-width: 180px; position: sticky; top: 20px; }
-.dashboard-layout > div:last-child { flex: 999 1 280px; min-width: 280px; }
+/* This is the root cause of the mobile "nav floats on top of the page"
+   bug: `position: sticky` only makes sense while the nav sits BESIDE the
+   content column, in the same row - sticky then keeps it pinned near the
+   top of the viewport as that (much taller) content column scrolls past
+   it, which is the intended desktop/tablet behavior. Below the flex-wrap
+   threshold (~524px of content width - see the comment above), the nav
+   and content stack into separate full-width rows instead. A sticky
+   element stacked ABOVE the content is no longer scrolling alongside a
+   taller sibling in the same row - once you scroll past its own (short)
+   row, it detaches from flow and paints on top of whatever content has
+   scrolled up underneath it, which is exactly the overlap in the
+   screenshot. Gating `position: sticky` to only the width where the two
+   columns are actually guaranteed to sit side by side (comfortably above
+   the wrap point, so it can never fire while still stacked) removes the
+   overlap at its source rather than papering over it with a lower
+   z-index or a margin. */
+.dashboard-nav { flex: 0 1 220px; min-width: 180px; }
+@media (min-width: 640px) {
+  .dashboard-nav { position: sticky; top: 20px; }
+}
+.dashboard-layout > div:last-child { flex: 999 1 280px; min-width: 280px; max-width: 100%; }
 .dashboard-nav a { display: block; padding: 8px 10px; border-radius: var(--radius-sm); color: var(--color-text); text-decoration: none; font-size: 0.92rem; }
 .dashboard-nav a.active { background: var(--color-green-100); color: var(--color-green-900); font-weight: 600; }
 
