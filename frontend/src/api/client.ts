@@ -79,6 +79,18 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     } catch {
       /* non-JSON error body */
     }
+    // A 401 from any endpoint OTHER than login itself means a session that
+    // looked valid client-side has actually gone stale server-side (expired,
+    // or invalidated by signing in elsewhere - see the single-active-session
+    // rule in routers/auth.py). Without this, a staff member's "Approve"/
+    // "Save"/etc. click on a dead session just silently fails: the mutation
+    // rejects, nothing re-renders, and there's no error UI wired up on most
+    // of these buttons to say why - it looks exactly like a broken button.
+    // AuthContext listens for this to clear its stale user state, which
+    // sends ProtectedRoute into its already-existing redirect-to-login path.
+    if (res.status === 401 && path !== "/auth/login") {
+      window.dispatchEvent(new Event("rso:session-expired"));
+    }
     throw new ApiError(res.status, detail);
   }
   if (res.status === 204) return undefined as T;

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Fragment, useState } from "react";
-import { api } from "../../api/client";
+import { api, ApiError } from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
 import { EmptyState } from "../../components/EmptyState";
 import { StatusBadge } from "../../components/StatusBadge";
@@ -14,6 +14,7 @@ export function DealerApplications() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [credsMessage, setCredsMessage] = useState<string | null>(null);
+  const [decideError, setDecideError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const { data, isLoading } = useQuery({ queryKey: ["dealer-applications"], queryFn: () => api.get<AppRow[]>("/dealers/applications") });
   const { data: docs } = useQuery({
@@ -25,12 +26,17 @@ export function DealerApplications() {
   const decide = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) => api.post(`/dealers/applications/${id}/status/${status}`, {}),
     onSuccess: (r: unknown) => {
+      setDecideError(null);
       const res = r as { dealer_credentials?: { email: string; temporary_password: string } };
       if (res.dealer_credentials) {
         setCredsMessage(`Dealer account created: ${res.dealer_credentials.email} / temporary password: ${res.dealer_credentials.temporary_password}`);
       }
       qc.invalidateQueries({ queryKey: ["dealer-applications"] });
     },
+    // Without this, a failed Approve/Reject click (expired session, or a
+    // real validation error) did nothing visible at all - no message, no
+    // re-render, nothing - which is indistinguishable from a broken button.
+    onError: (e: unknown) => setDecideError(e instanceof ApiError ? e.message : "Could not update this application. Please try again."),
   });
 
   const removeApplication = useMutation({
@@ -44,6 +50,7 @@ export function DealerApplications() {
   return (
     <div>
       <h2>Dealer applications</h2>
+      {decideError && <div className="alert alert-error">{decideError}</div>}
       {credsMessage && <div className="alert alert-success">{credsMessage}</div>}
       <div className="table-scroll">
         <table className="data-table">

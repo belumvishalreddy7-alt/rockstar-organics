@@ -27,6 +27,8 @@ function isOtpRequired(result: LoginResult): result is OtpRequired {
 interface AuthContextValue {
   user: CurrentUser | null;
   loading: boolean;
+  sessionExpired: boolean;
+  clearSessionExpired: () => void;
   refresh: () => Promise<void>;
   login: (email: string, password: string) => Promise<LoginResult>;
   verifyLoginOtp: (email: string, code: string) => Promise<CurrentUser>;
@@ -38,6 +40,7 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   const refresh = async () => {
     try {
@@ -54,6 +57,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refresh();
   }, []);
 
+  useEffect(() => {
+    // Dispatched by api/client.ts whenever a request comes back 401 while
+    // this tab still thinks it has a valid session (expired, or invalidated
+    // by signing in elsewhere - only one session per account stays active).
+    // Clearing `user` here is what actually fixes the "button does nothing"
+    // symptom: ProtectedRoute already redirects to /login the instant `user`
+    // is null, it just never found out the old session had died.
+    const onExpired = () => {
+      setUser((current) => (current ? null : current));
+      setSessionExpired(true);
+    };
+    window.addEventListener("rso:session-expired", onExpired);
+    return () => window.removeEventListener("rso:session-expired", onExpired);
+  }, []);
+
   const login = async (email: string, password: string) => {
     const result = await api.post<LoginResult>("/auth/login", { email, password });
     // Staff, dealer, and distributor accounts stop here with an emailed
@@ -61,12 +79,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // issued, and therefore no user state to set, until verifyLoginOtp
     // completes. Farmers skip this and get a session immediately.
     if (!isOtpRequired(result)) setUser(result);
+    setSessionExpired(false);
     return result;
   };
 
   const verifyLoginOtp = async (email: string, code: string) => {
     const u = await api.post<CurrentUser>("/auth/login/verify-otp", { email, code });
     setUser(u);
+    setSessionExpired(false);
     return u;
   };
 
@@ -82,7 +102,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  return <AuthContext.Provider value={{ user, loading, refresh, login, verifyLoginOtp, logout }}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider
+      value={{ user, loading, sessionExpired, clearSessionExpired: () => setSessionExpired(false), refresh, login, verifyLoginOtp, logout }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {

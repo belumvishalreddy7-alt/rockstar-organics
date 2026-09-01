@@ -12,7 +12,7 @@ function goToRoleHome(navigate: ReturnType<typeof useNavigate>, role: string) {
 }
 
 export function Login() {
-  const { login, verifyLoginOtp } = useAuth();
+  const { login, verifyLoginOtp, sessionExpired } = useAuth();
   const navigate = useNavigate();
   const [step, setStep] = useState<"credentials" | "otp">("credentials");
   const [email, setEmail] = useState("");
@@ -27,6 +27,11 @@ export function Login() {
     <div className="container page-section" style={{ maxWidth: 420 }}>
       <h1>Sign in</h1>
       <div className="panel">
+        {sessionExpired && (
+          <div className="alert alert-info">
+            Your session ended - this can happen after a while, or after signing in from another device. Sign in again to continue.
+          </div>
+        )}
         {error && <div className="alert alert-error">{error}</div>}
         {step === "credentials" && (
           <form
