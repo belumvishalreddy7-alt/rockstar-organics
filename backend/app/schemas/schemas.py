@@ -150,6 +150,8 @@ class ProductCreate(BaseModel):
     dosage_value: str | None = Field(default=None, max_length=50)
     dosage_unit: str | None = Field(default=None, max_length=30)
     pack_sizes: str | None = Field(default=None, max_length=255)
+    manufacturing_date: dt.date | None = None
+    expiry_date: dt.date | None = None
     precautions: str | None = Field(default=None, max_length=5000)
     regulatory_notes: str | None = Field(default=None, max_length=5000)
     active_ingredients: str | None = Field(default=None, max_length=5000)

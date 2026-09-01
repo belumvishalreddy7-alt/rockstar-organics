@@ -12,6 +12,7 @@ interface ProductOut {
   id: string; name: string; short_description: string | null; full_description: string | null;
   benefits: string | null; recommended_crops: string | null; application_method: string | null;
   dosage_value: string | null; dosage_unit: string | null;
+  manufacturing_date: string | null; expiry_date: string | null;
   precautions: string | null; average_rating: number | null; approved_review_count: number;
   rating_breakdown: RatingBreakdown; reviews: ReviewItem[];
   images: { id: string; file_path: string; alt_text: string | null }[];
@@ -69,6 +70,8 @@ export function ProductDetail() {
           {data.recommended_crops && <p><strong>Recommended crops:</strong> {data.recommended_crops}</p>}
           {data.application_method && <p><strong>Application method:</strong> {data.application_method}</p>}
           {data.dosage_value && <p><strong>Dosage:</strong> {data.dosage_value} {data.dosage_unit}</p>}
+          {data.manufacturing_date && <p><strong>Manufacturing date:</strong> {new Date(data.manufacturing_date).toLocaleDateString()}</p>}
+          {data.expiry_date && <p><strong>Expiry date:</strong> {new Date(data.expiry_date).toLocaleDateString()}</p>}
           {data.precautions && <><h3>Precautions</h3><p>{data.precautions}</p></>}
 
           {data.pack_size_records.length > 0 && (

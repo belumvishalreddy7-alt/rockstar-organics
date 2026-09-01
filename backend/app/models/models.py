@@ -14,6 +14,7 @@ import uuid
 
 from sqlalchemy import (
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
@@ -231,6 +232,11 @@ class Product(Base):
     dosage_value: Mapped[str | None] = mapped_column(String(50), nullable=True)
     dosage_unit: Mapped[str | None] = mapped_column(String(30), nullable=True)
     pack_sizes: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Batch-level dates, not the product's own metadata dates - entered by
+    # staff from the actual packaging/label, never inferred. Blank means
+    # "information pending verification", matching every other field here.
+    manufacturing_date: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
+    expiry_date: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
     precautions: Mapped[str | None] = mapped_column(Text, nullable=True)
     regulatory_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Structured composition fields, added 2026-08-28 alongside the

@@ -57,6 +57,43 @@ def test_product_lifecycle_and_visibility(client, super_admin):
     assert r.status_code == 200
 
 
+def test_manufacturing_and_expiry_dates_editable_and_public(client, super_admin):
+    """Covers the exact dead end a real user hit: a product stuck at
+    'Cannot publish: missing category' with no field for it on the create
+    form - PUT lets an existing product's category (and these two new
+    date fields) be set after the fact, not just at creation time."""
+    _, email, password = super_admin
+    _login(client, email, password)
+    r = client.post("/api/v1/products", json={"sku": "SKU-DATES", "name": "Dated Product", "slug": "dated-product",
+                                            "precautions": "x", "full_description": "x"})
+    pid = r.json()["id"]
+    assert r.json()["manufacturing_date"] is None
+    client.post(f"/api/v1/products/{pid}/transition/in_review", json={})
+    client.post(f"/api/v1/products/{pid}/transition/approved", json={})
+
+    stuck = client.post(f"/api/v1/products/{pid}/transition/published", json={})
+    assert stuck.status_code == 400
+    assert "category" in stuck.json()["detail"]
+
+    cat = client.post("/api/v1/categories", json={"name": "Dates Cat", "slug": "dates-cat"})
+    update = client.put(f"/api/v1/products/{pid}", json={
+        "sku": "SKU-DATES", "name": "Dated Product", "slug": "dated-product",
+        "category_id": cat.json()["id"], "precautions": "x", "full_description": "x",
+        "manufacturing_date": "2026-01-15", "expiry_date": "2027-01-15",
+    })
+    assert update.status_code == 200, update.text
+    assert update.json()["manufacturing_date"] == "2026-01-15"
+    assert update.json()["expiry_date"] == "2027-01-15"
+
+    client.post(f"/api/v1/media/products/{pid}/images?alt_text=Front", files={"file": ("f.jpg", b"\xff\xd8\xff" + b"x" * 20, "image/jpeg")})
+    published = client.post(f"/api/v1/products/{pid}/transition/published", json={})
+    assert published.status_code == 200, published.text
+
+    public = client.get("/api/v1/products/public/dated-product")
+    assert public.json()["manufacturing_date"] == "2026-01-15"
+    assert public.json()["expiry_date"] == "2027-01-15"
+
+
 def test_sku_and_slug_uniqueness(client, super_admin):
     _, email, password = super_admin
     _login(client, email, password)

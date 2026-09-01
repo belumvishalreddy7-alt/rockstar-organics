@@ -13,9 +13,113 @@ interface ProductDocument { id: string; document_type: string; title: string; ve
 
 interface ProductRow {
   id: string; sku: string; name: string; status: string; slug: string;
+  category_id: string | null; short_description: string | null; full_description: string | null;
+  benefits: string | null; recommended_crops: string | null; application_method: string | null;
+  dosage_value: string | null; dosage_unit: string | null; manufacturing_date: string | null;
+  expiry_date: string | null; precautions: string | null;
+  active_ingredients: string | null; nutrient_content: string | null; concentration: string | null;
+  formulation: string | null; grade: string | null; physical_form: string | null; technical_specifications: string | null;
   images: { id: string; file_path: string; alt_text: string | null }[];
   pack_size_records: PackSize[]; crops: Crop[]; claims: Claim[];
   certifications: Certification[]; documents: ProductDocument[];
+}
+
+interface Category { id: string; name: string; slug: string; }
+
+type ProductFieldValues = {
+  sku: string; name: string; slug: string; category_id: string; short_description: string; full_description: string;
+  precautions: string; benefits: string; recommended_crops: string; application_method: string;
+  dosage_value: string; dosage_unit: string; manufacturing_date: string; expiry_date: string;
+  active_ingredients: string; nutrient_content: string; concentration: string; formulation: string;
+  grade: string; physical_form: string; technical_specifications: string;
+};
+
+function rowToFieldValues(p: ProductRow): ProductFieldValues {
+  return {
+    sku: p.sku, name: p.name, slug: p.slug, category_id: p.category_id || "",
+    short_description: p.short_description || "", full_description: p.full_description || "",
+    precautions: p.precautions || "", benefits: p.benefits || "", recommended_crops: p.recommended_crops || "",
+    application_method: p.application_method || "", dosage_value: p.dosage_value || "", dosage_unit: p.dosage_unit || "",
+    manufacturing_date: p.manufacturing_date || "", expiry_date: p.expiry_date || "",
+    active_ingredients: p.active_ingredients || "", nutrient_content: p.nutrient_content || "",
+    concentration: p.concentration || "", formulation: p.formulation || "", grade: p.grade || "",
+    physical_form: p.physical_form || "", technical_specifications: p.technical_specifications || "",
+  };
+}
+
+/** Sends every ProductUpdate field, not just the ones the caller touched -
+ * PUT /products/{id} replaces the whole row (model_dump() with no
+ * exclude_unset), so submitting a partial body would silently null out
+ * every field this form doesn't know about. */
+function ProductFields({ values, onChange, categories, onCategoryCreated }: {
+  values: ProductFieldValues; onChange: (v: ProductFieldValues) => void;
+  categories: Category[] | undefined; onCategoryCreated: (id: string) => void;
+}) {
+  const [showComposition, setShowComposition] = useState(false);
+  const set = <K extends keyof ProductFieldValues>(key: K, val: ProductFieldValues[K]) => onChange({ ...values, [key]: val });
+
+  return (
+    <>
+      <div className="grid cols-2">
+        <div className="field"><label>SKU</label><input type="text" required value={values.sku} onChange={(e) => set("sku", e.target.value)} /></div>
+        <div className="field"><label>Name</label><input type="text" required value={values.name} onChange={(e) => set("name", e.target.value)} /></div>
+        <div className="field"><label>Slug (lowercase-hyphenated)</label><input type="text" required value={values.slug} onChange={(e) => set("slug", e.target.value)} /></div>
+        <div className="field">
+          <label>Category</label>
+          <div className="inline">
+            <select value={values.category_id} onChange={(e) => set("category_id", e.target.value)} style={{ flex: 1 }}>
+              <option value="">Not set</option>
+              {categories?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <button
+              type="button" className="btn btn-ghost btn-sm"
+              onClick={async () => {
+                const name = window.prompt("New category name:");
+                if (!name?.trim()) return;
+                const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+                try {
+                  const created = await api.post<Category>("/categories", { name: name.trim(), slug });
+                  onCategoryCreated(created.id);
+                } catch {
+                  window.alert("Could not create that category - it may already exist.");
+                }
+              }}
+            >
+              + New
+            </button>
+          </div>
+        </div>
+        <div className="field"><label>Short description</label><input type="text" value={values.short_description} onChange={(e) => set("short_description", e.target.value)} /></div>
+      </div>
+      <div className="field"><label>Full description</label><textarea value={values.full_description} onChange={(e) => set("full_description", e.target.value)} /></div>
+      <div className="field"><label>Uses / benefits</label><textarea value={values.benefits} onChange={(e) => set("benefits", e.target.value)} /></div>
+      <div className="grid cols-2">
+        <div className="field"><label>Recommended crops</label><input type="text" value={values.recommended_crops} onChange={(e) => set("recommended_crops", e.target.value)} /></div>
+        <div className="field"><label>Application method</label><input type="text" value={values.application_method} onChange={(e) => set("application_method", e.target.value)} /></div>
+        <div className="field"><label>Dosage value</label><input type="text" placeholder="e.g. 2" value={values.dosage_value} onChange={(e) => set("dosage_value", e.target.value)} /></div>
+        <div className="field"><label>Dosage unit</label><input type="text" placeholder="e.g. ml/L, g/L" value={values.dosage_unit} onChange={(e) => set("dosage_unit", e.target.value)} /></div>
+        <div className="field"><label>Manufacturing date</label><input type="date" value={values.manufacturing_date} onChange={(e) => set("manufacturing_date", e.target.value)} /></div>
+        <div className="field"><label>Expiry date</label><input type="date" value={values.expiry_date} onChange={(e) => set("expiry_date", e.target.value)} /></div>
+      </div>
+      <div className="field"><label>Precautions</label><textarea value={values.precautions} onChange={(e) => set("precautions", e.target.value)} /></div>
+
+      <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowComposition((s) => !s)}>
+        {showComposition ? "Hide composition fields" : "Add composition / technical specifications"}
+      </button>
+      {showComposition && (
+        <div className="grid cols-2">
+          <div className="field"><label>Active ingredients</label><textarea value={values.active_ingredients} onChange={(e) => set("active_ingredients", e.target.value)} /></div>
+          <div className="field"><label>Nutrient content</label><textarea value={values.nutrient_content} onChange={(e) => set("nutrient_content", e.target.value)} /></div>
+          <div className="field"><label>Concentration</label><input type="text" value={values.concentration} onChange={(e) => set("concentration", e.target.value)} /></div>
+          <div className="field"><label>Formulation</label><input type="text" value={values.formulation} onChange={(e) => set("formulation", e.target.value)} /></div>
+          <div className="field"><label>Grade</label><input type="text" value={values.grade} onChange={(e) => set("grade", e.target.value)} /></div>
+          <div className="field"><label>Physical form</label><input type="text" value={values.physical_form} onChange={(e) => set("physical_form", e.target.value)} /></div>
+          <div className="field"><label>Technical specifications</label><textarea value={values.technical_specifications} onChange={(e) => set("technical_specifications", e.target.value)} /></div>
+        </div>
+      )}
+      <p className="muted">Leave any field blank if the information isn't verified yet - it will show as "Information pending verification" rather than being guessed.</p>
+    </>
+  );
 }
 
 // Every (from, to) pair the backend allows, purely for building the button
@@ -35,11 +139,25 @@ const TRANSITIONS: Record<string, string[]> = {
 
 const STATUS_VALUES = ["draft", "pending_verification", "in_review", "revision_required", "approved", "published", "unpublished", "archived", "rejected"];
 
-const EMPTY_FORM = {
-  sku: "", name: "", slug: "", short_description: "", full_description: "", precautions: "",
+const EMPTY_FORM: ProductFieldValues = {
+  sku: "", name: "", slug: "", category_id: "", short_description: "", full_description: "", precautions: "",
   benefits: "", recommended_crops: "", application_method: "", dosage_value: "", dosage_unit: "",
+  manufacturing_date: "", expiry_date: "",
   active_ingredients: "", nutrient_content: "", concentration: "", formulation: "", grade: "", physical_form: "", technical_specifications: "",
 };
+
+/** category_id/manufacturing_date/expiry_date are "" in the form state
+ * (plain controlled inputs) but the backend needs null, not an empty
+ * string, for an optional FK/date field - an empty string fails Pydantic's
+ * date parsing outright, the same lesson as the pack-size price field. */
+function fieldsToPayload(v: ProductFieldValues) {
+  return {
+    ...v,
+    category_id: v.category_id || null,
+    manufacturing_date: v.manufacturing_date || null,
+    expiry_date: v.expiry_date || null,
+  };
+}
 
 const DOCUMENT_TYPES = ["technical_data_sheet", "specification", "safety_data_sheet", "certificate", "registration", "label", "brochure", "catalogue", "regulatory", "other"];
 const CLAIM_CATEGORIES = ["benefit", "technical", "crop", "quality", "certification"];
@@ -49,7 +167,6 @@ export function ProductManagement() {
   const qc = useQueryClient();
   const [statusFilter, setStatusFilter] = useState("");
   const [showForm, setShowForm] = useState(false);
-  const [showComposition, setShowComposition] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [newImage, setNewImage] = useState<File | null>(null);
@@ -60,13 +177,15 @@ export function ProductManagement() {
     queryKey: ["admin-products", statusFilter],
     queryFn: () => api.get<{ items: ProductRow[] }>(`/products${statusFilter ? `?status=${statusFilter}` : ""}`),
   });
+  const { data: categories } = useQuery({ queryKey: ["categories"], queryFn: () => api.get<Category[]>("/categories/public") });
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["admin-products"] });
+  const invalidateCategories = () => qc.invalidateQueries({ queryKey: ["categories"] });
   const onErr = (e: unknown) => setError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Something went wrong.");
 
   const createProduct = useMutation({
     mutationFn: async () => {
-      const created = await api.post<{ id: string }>("/products", form);
+      const created = await api.post<{ id: string }>("/products", fieldsToPayload(form));
       if (newImage) {
         const formData = new FormData();
         formData.append("file", newImage);
@@ -87,6 +206,12 @@ export function ProductManagement() {
   const removeProduct = useMutation({
     mutationFn: (id: string) => api.del(`/products/${id}`),
     onSuccess: invalidate,
+    onError: onErr,
+  });
+
+  const updateProduct = useMutation({
+    mutationFn: ({ id, values }: { id: string; values: ProductFieldValues }) => api.put(`/products/${id}`, fieldsToPayload(values)),
+    onSuccess: () => { setError(null); invalidate(); },
     onError: onErr,
   });
 
@@ -194,21 +319,7 @@ export function ProductManagement() {
             setError(null);
             createProduct.mutate();
           }}>
-            <div className="grid cols-2">
-              <div className="field"><label htmlFor="sku">SKU</label><input type="text" id="sku" required value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} /></div>
-              <div className="field"><label htmlFor="name">Name</label><input type="text" id="name" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
-              <div className="field"><label htmlFor="slug">Slug (lowercase-hyphenated)</label><input type="text" id="slug" required value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} /></div>
-              <div className="field"><label htmlFor="short_description">Short description</label><input type="text" id="short_description" value={form.short_description} onChange={(e) => setForm({ ...form, short_description: e.target.value })} /></div>
-            </div>
-            <div className="field"><label htmlFor="full_description">Full description</label><textarea id="full_description" value={form.full_description} onChange={(e) => setForm({ ...form, full_description: e.target.value })} /></div>
-            <div className="field"><label htmlFor="benefits">Uses / benefits</label><textarea id="benefits" value={form.benefits} onChange={(e) => setForm({ ...form, benefits: e.target.value })} /></div>
-            <div className="grid cols-2">
-              <div className="field"><label htmlFor="recommended_crops">Recommended crops</label><input type="text" id="recommended_crops" value={form.recommended_crops} onChange={(e) => setForm({ ...form, recommended_crops: e.target.value })} /></div>
-              <div className="field"><label htmlFor="application_method">Application method</label><input type="text" id="application_method" value={form.application_method} onChange={(e) => setForm({ ...form, application_method: e.target.value })} /></div>
-              <div className="field"><label htmlFor="dosage_value">Dosage value</label><input type="text" id="dosage_value" placeholder="e.g. 2" value={form.dosage_value} onChange={(e) => setForm({ ...form, dosage_value: e.target.value })} /></div>
-              <div className="field"><label htmlFor="dosage_unit">Dosage unit</label><input type="text" id="dosage_unit" placeholder="e.g. ml/L, g/L" value={form.dosage_unit} onChange={(e) => setForm({ ...form, dosage_unit: e.target.value })} /></div>
-            </div>
-            <div className="field"><label htmlFor="precautions">Precautions</label><textarea id="precautions" value={form.precautions} onChange={(e) => setForm({ ...form, precautions: e.target.value })} /></div>
+            <ProductFields values={form} onChange={setForm} categories={categories} onCategoryCreated={(id) => { setForm({ ...form, category_id: id }); invalidateCategories(); }} />
 
             <div className="grid cols-2">
               <div className="field">
@@ -223,22 +334,6 @@ export function ProductManagement() {
                 </div>
               )}
             </div>
-
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowComposition((s) => !s)}>
-              {showComposition ? "Hide composition fields" : "Add composition / technical specifications"}
-            </button>
-            {showComposition && (
-              <div className="grid cols-2">
-                <div className="field"><label htmlFor="active_ingredients">Active ingredients</label><textarea id="active_ingredients" value={form.active_ingredients} onChange={(e) => setForm({ ...form, active_ingredients: e.target.value })} /></div>
-                <div className="field"><label htmlFor="nutrient_content">Nutrient content</label><textarea id="nutrient_content" value={form.nutrient_content} onChange={(e) => setForm({ ...form, nutrient_content: e.target.value })} /></div>
-                <div className="field"><label htmlFor="concentration">Concentration</label><input type="text" id="concentration" value={form.concentration} onChange={(e) => setForm({ ...form, concentration: e.target.value })} /></div>
-                <div className="field"><label htmlFor="formulation">Formulation</label><input type="text" id="formulation" value={form.formulation} onChange={(e) => setForm({ ...form, formulation: e.target.value })} /></div>
-                <div className="field"><label htmlFor="grade">Grade</label><input type="text" id="grade" value={form.grade} onChange={(e) => setForm({ ...form, grade: e.target.value })} /></div>
-                <div className="field"><label htmlFor="physical_form">Physical form</label><input type="text" id="physical_form" value={form.physical_form} onChange={(e) => setForm({ ...form, physical_form: e.target.value })} /></div>
-                <div className="field"><label htmlFor="technical_specifications">Technical specifications</label><textarea id="technical_specifications" value={form.technical_specifications} onChange={(e) => setForm({ ...form, technical_specifications: e.target.value })} /></div>
-              </div>
-            )}
-            <p className="muted">Leave any field blank if the information isn't verified yet - it will show as "Information pending verification" rather than being guessed.</p>
             <button className="btn btn-primary" type="submit" disabled={createProduct.isPending}>Save draft</button>
           </form>
         </div>
@@ -293,6 +388,14 @@ export function ProductManagement() {
             {data?.items.filter((p) => p.id === expandedId).map((p) => (
               <tr key={`${p.id}-detail`}>
                 <td colSpan={4}>
+                  <ProductEditForm
+                    key={p.id}
+                    product={p}
+                    categories={categories}
+                    onCategoryCreated={invalidateCategories}
+                    isSaving={updateProduct.isPending}
+                    onSave={(values) => updateProduct.mutate({ id: p.id, values })}
+                  />
                   <ProductDetailPanel
                     product={p}
                     onRemoveImage={(imageId) => removeImage.mutate({ id: p.id, imageId })}
@@ -316,6 +419,28 @@ export function ProductManagement() {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+function ProductEditForm({ product, categories, onCategoryCreated, onSave, isSaving }: {
+  product: ProductRow; categories: Category[] | undefined; onCategoryCreated: () => void;
+  onSave: (values: ProductFieldValues) => void; isSaving: boolean;
+}) {
+  const [values, setValues] = useState<ProductFieldValues>(() => rowToFieldValues(product));
+
+  return (
+    <div className="panel" style={{ marginBottom: 16 }}>
+      <h3>Edit details</h3>
+      <form onSubmit={(e) => { e.preventDefault(); onSave(values); }}>
+        <ProductFields
+          values={values} onChange={setValues} categories={categories}
+          onCategoryCreated={(id) => { setValues({ ...values, category_id: id }); onCategoryCreated(); }}
+        />
+        <button className="btn btn-primary btn-sm" type="submit" disabled={isSaving}>
+          {isSaving ? "Saving..." : "Save changes"}
+        </button>
+      </form>
     </div>
   );
 }
