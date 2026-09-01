@@ -768,6 +768,7 @@ class LeadershipProfileOut(VerifiableFieldsOut):
     position: str
     biography: str | None
     photo_media_id: str | None
+    photo_url: str | None = None
     responsibilities: str | None
     experience: str | None
     education: str | None
@@ -788,6 +789,7 @@ class ManufacturingFacilityCreate(BaseModel):
     capacity: str | None = Field(default=None, max_length=255)
     established_date: dt.datetime | None = None
     contact_info: str | None = Field(default=None, max_length=500)
+    photo_media_id: str | None = None
     source_reference: str | None = Field(default=None, max_length=2000)
 
 
@@ -803,6 +805,8 @@ class ManufacturingFacilityOut(VerifiableFieldsOut):
     capacity: str | None
     established_date: dt.datetime | None
     contact_info: str | None
+    photo_media_id: str | None
+    photo_url: str | None = None
 
 
 class ResearchFacilityCreate(BaseModel):
@@ -812,6 +816,7 @@ class ResearchFacilityCreate(BaseModel):
     description: str | None = Field(default=None, max_length=8000)
     capabilities: str | None = Field(default=None, max_length=4000)
     equipment_info: str | None = Field(default=None, max_length=4000)
+    photo_media_id: str | None = None
     source_reference: str | None = Field(default=None, max_length=2000)
 
 
@@ -822,6 +827,8 @@ class ResearchFacilityOut(VerifiableFieldsOut):
     description: str | None
     capabilities: str | None
     equipment_info: str | None
+    photo_media_id: str | None
+    photo_url: str | None = None
 
 
 class ResearchAreaCreate(BaseModel):
@@ -836,6 +843,7 @@ class ResearchAreaOut(VerifiableFieldsOut):
     title: str
     description: str | None
     image_media_id: str | None
+    image_url: str | None = None
     sort_order: int
 
 
@@ -857,6 +865,7 @@ class CertificationOut(VerifiableFieldsOut):
     issue_date: dt.datetime | None
     expiry_date: dt.datetime | None
     document_media_id: str | None
+    document_url: str | None = None
     scope: str | None
 
 
@@ -866,6 +875,7 @@ class SustainabilityInitiativeCreate(BaseModel):
     category: str | None = Field(default=None, max_length=100)
     start_date: dt.datetime | None = None
     measurable_results: str | None = Field(default=None, max_length=2000)
+    photo_media_id: str | None = None
     source_reference: str | None = Field(default=None, max_length=2000)
 
 
@@ -875,6 +885,8 @@ class SustainabilityInitiativeOut(VerifiableFieldsOut):
     category: str | None
     start_date: dt.datetime | None
     measurable_results: str | None
+    photo_media_id: str | None
+    photo_url: str | None = None
 
 
 # ---------------------------------------------------------------------------

@@ -1,7 +1,15 @@
 import { useState } from "react";
 import { useAuth } from "../../context/AuthContext";
-import { CorporateEntityManager, type FieldConfig } from "../../components/CorporateEntityManager";
+import { CorporateEntityManager, type FieldConfig, type MediaConfig } from "../../components/CorporateEntityManager";
 import { PageContentEditor } from "../../components/PageContentEditor";
+
+const IMAGE_ACCEPT = "image/jpeg,image/png,image/webp";
+const LEADERSHIP_MEDIA: MediaConfig = { field: "photo_media_id", urlField: "photo_url", purpose: "leadership_photo", label: "Photo", accept: IMAGE_ACCEPT };
+const MANUFACTURING_MEDIA: MediaConfig = { field: "photo_media_id", urlField: "photo_url", purpose: "manufacturing_photo", label: "Photo", accept: IMAGE_ACCEPT };
+const RESEARCH_FACILITY_MEDIA: MediaConfig = { field: "photo_media_id", urlField: "photo_url", purpose: "research_photo", label: "Photo", accept: IMAGE_ACCEPT };
+const RESEARCH_AREA_MEDIA: MediaConfig = { field: "image_media_id", urlField: "image_url", purpose: "research_photo", label: "Image", accept: IMAGE_ACCEPT };
+const CERTIFICATION_MEDIA: MediaConfig = { field: "document_media_id", urlField: "document_url", purpose: "certification_document", label: "Certificate document", accept: `${IMAGE_ACCEPT},application/pdf` };
+const SUSTAINABILITY_MEDIA: MediaConfig = { field: "photo_media_id", urlField: "photo_url", purpose: "sustainability_photo", label: "Photo", accept: IMAGE_ACCEPT };
 
 const CONTENT_MANAGER_ROLES = ["super_admin", "admin", "content_manager"];
 
@@ -103,7 +111,7 @@ export function CorporateContentManagement() {
 
       {section === "leadership" && (
         <CorporateEntityManager title="Leadership profiles" basePath="/leadership" labelField="full_name" subLabelField="position"
-          fields={LEADERSHIP_FIELDS} userRole={user.role} />
+          fields={LEADERSHIP_FIELDS} userRole={user.role} media={LEADERSHIP_MEDIA} />
       )}
 
       {section === "manufacturing" && (
@@ -119,7 +127,7 @@ export function CorporateContentManagement() {
             ]}
           />
           <CorporateEntityManager title="Manufacturing facilities" basePath="/manufacturing/facilities" labelField="name" subLabelField="facility_type"
-            fields={FACILITY_FIELDS} userRole={user.role} />
+            fields={FACILITY_FIELDS} userRole={user.role} media={MANUFACTURING_MEDIA} />
         </>
       )}
 
@@ -135,9 +143,9 @@ export function CorporateContentManagement() {
             ]}
           />
           <CorporateEntityManager title="Research areas" basePath="/research/areas" labelField="title"
-            fields={RESEARCH_AREA_FIELDS} userRole={user.role} />
+            fields={RESEARCH_AREA_FIELDS} userRole={user.role} media={RESEARCH_AREA_MEDIA} />
           <CorporateEntityManager title="Research facilities" basePath="/research/facilities" labelField="name" subLabelField="facility_type"
-            fields={RESEARCH_FACILITY_FIELDS} userRole={user.role} />
+            fields={RESEARCH_FACILITY_FIELDS} userRole={user.role} media={RESEARCH_FACILITY_MEDIA} />
         </>
       )}
 
@@ -155,7 +163,7 @@ export function CorporateContentManagement() {
             ]}
           />
           <CorporateEntityManager title="Certifications" basePath="/certifications" labelField="name" subLabelField="issuing_organization"
-            fields={CERTIFICATION_FIELDS} userRole={user.role} />
+            fields={CERTIFICATION_FIELDS} userRole={user.role} media={CERTIFICATION_MEDIA} />
         </>
       )}
 
@@ -172,7 +180,7 @@ export function CorporateContentManagement() {
             ]}
           />
           <CorporateEntityManager title="Sustainability initiatives" basePath="/sustainability/initiatives" labelField="title" subLabelField="category"
-            fields={SUSTAINABILITY_FIELDS} userRole={user.role} />
+            fields={SUSTAINABILITY_FIELDS} userRole={user.role} media={SUSTAINABILITY_MEDIA} />
         </>
       )}
     </div>

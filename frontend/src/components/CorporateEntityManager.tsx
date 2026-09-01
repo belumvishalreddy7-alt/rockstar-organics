@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError } from "../api/client";
+import { api, ApiError, mediaUrl, uploadFile } from "../api/client";
 import { EmptyState } from "./EmptyState";
 import { WorkflowActions } from "./WorkflowActions";
 
@@ -36,6 +36,18 @@ function formFromItem(fields: FieldConfig[], item: Item): Record<string, string>
   return form;
 }
 
+export interface MediaConfig {
+  /** Payload key holding the uploaded media's id, e.g. "photo_media_id". */
+  field: string;
+  /** Matching output key holding the resolved public URL, e.g. "photo_url". */
+  urlField: string;
+  /** Purpose passed to POST /media/corporate/{purpose} - must be one of
+   * CORPORATE_MEDIA_PURPOSES on the backend. */
+  purpose: string;
+  label: string;
+  accept: string;
+}
+
 interface CorporateEntityManagerProps {
   title: string;
   basePath: string;
@@ -43,27 +55,50 @@ interface CorporateEntityManagerProps {
   subLabelField?: string;
   fields: FieldConfig[];
   userRole: string;
+  media?: MediaConfig;
 }
 
-export function CorporateEntityManager({ title, basePath, labelField, subLabelField, fields, userRole }: CorporateEntityManagerProps) {
+export function CorporateEntityManager({ title, basePath, labelField, subLabelField, fields, userRole, media }: CorporateEntityManagerProps) {
   const qc = useQueryClient();
   const queryKey = ["corporate-admin", basePath];
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<Record<string, string>>(emptyForm(fields));
+  const [mediaId, setMediaId] = useState<string | null>(null);
+  const [mediaUploading, setMediaUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({ queryKey, queryFn: () => api.get<Item[]>(`${basePath}/admin`) });
 
+  const uploadMedia = async (file: File) => {
+    if (!media) return;
+    setMediaUploading(true);
+    try {
+      const uploaded = await uploadFile<{ id: string }>(`/media/corporate/${media.purpose}`, (() => {
+        const fd = new FormData();
+        fd.append("file", file);
+        return fd;
+      })());
+      setMediaId(uploaded.id);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Could not upload that file.");
+    } finally {
+      setMediaUploading(false);
+    }
+  };
+
+  const withMedia = (payload: Record<string, unknown>) => (media ? { ...payload, [media.field]: mediaId } : payload);
+
   const create = useMutation({
-    mutationFn: () => api.post(basePath, toPayload(fields, form)),
-    onSuccess: () => { setShowForm(false); setForm(emptyForm(fields)); setError(null); qc.invalidateQueries({ queryKey }); },
+    mutationFn: () => api.post(basePath, withMedia(toPayload(fields, form))),
+    onSuccess: () => { setShowForm(false); setForm(emptyForm(fields)); setMediaId(null); setError(null); qc.invalidateQueries({ queryKey }); },
     onError: (e: unknown) => setError(e instanceof ApiError ? e.message : "Something went wrong."),
   });
 
   const update = useMutation({
-    mutationFn: (id: string) => api.put(`${basePath}/${id}`, toPayload(fields, form)),
-    onSuccess: () => { setEditingId(null); setForm(emptyForm(fields)); setError(null); qc.invalidateQueries({ queryKey }); },
+    mutationFn: (id: string) => api.put(`${basePath}/${id}`, withMedia(toPayload(fields, form))),
+    onSuccess: () => { setEditingId(null); setForm(emptyForm(fields)); setMediaId(null); setError(null); qc.invalidateQueries({ queryKey }); },
     onError: (e: unknown) => setError(e instanceof ApiError ? e.message : "Something went wrong."),
   });
 
@@ -76,6 +111,7 @@ export function CorporateEntityManager({ title, basePath, labelField, subLabelFi
   const startEdit = (item: Item) => {
     setEditingId(item.id);
     setForm(formFromItem(fields, item));
+    setMediaId(media ? (item[media.field] ?? null) : null);
     setShowForm(false);
     setError(null);
   };
@@ -101,7 +137,7 @@ export function CorporateEntityManager({ title, basePath, labelField, subLabelFi
       <div className="section-heading">
         <h3>{title}</h3>
         {!showForm && !editingId && (
-          <button className="btn btn-primary btn-sm" onClick={() => { setShowForm(true); setForm(emptyForm(fields)); }}>Add</button>
+          <button className="btn btn-primary btn-sm" onClick={() => { setShowForm(true); setForm(emptyForm(fields)); setMediaId(null); }}>Add</button>
         )}
       </div>
       {error && <div className="alert alert-error">{error}</div>}
@@ -112,8 +148,19 @@ export function CorporateEntityManager({ title, basePath, labelField, subLabelFi
           style={{ marginBottom: 16, borderBottom: "1px solid var(--color-border)", paddingBottom: 16 }}
         >
           {fields.map(renderField)}
+          {media && (
+            <div className="field">
+              <label htmlFor={`${basePath}-media`}>{media.label}</label>
+              {mediaId && <p className="small muted">Uploaded - choose a different file to replace it.</p>}
+              <input
+                id={`${basePath}-media`} type="file" accept={media.accept}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadMedia(f); }}
+              />
+              {mediaUploading && <p className="small muted">Uploading...</p>}
+            </div>
+          )}
           <div className="inline">
-            <button className="btn btn-primary btn-sm" type="submit" disabled={create.isPending || update.isPending}>
+            <button className="btn btn-primary btn-sm" type="submit" disabled={create.isPending || update.isPending || mediaUploading}>
               {editingId ? "Save changes" : "Create draft"}
             </button>
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setShowForm(false); setEditingId(null); }}>Cancel</button>
@@ -130,6 +177,13 @@ export function CorporateEntityManager({ title, basePath, labelField, subLabelFi
               <div>
                 <strong>{item[labelField] || "(untitled)"}</strong>
                 {subLabelField && item[subLabelField] && <div className="small muted">{item[subLabelField]}</div>}
+                {media && item[media.urlField] && (
+                  media.accept.includes("pdf") ? (
+                    <div className="small"><a href={mediaUrl(item[media.urlField])} target="_blank" rel="noreferrer">View {media.label.toLowerCase()}</a></div>
+                  ) : (
+                    <img src={mediaUrl(item[media.urlField])} alt="" style={{ width: 80, height: 60, objectFit: "cover", borderRadius: 4, marginTop: 6 }} />
+                  )
+                )}
               </div>
               <div className="inline">
                 <button className="btn btn-ghost btn-sm" onClick={() => startEdit(item)}>Edit</button>

@@ -13,7 +13,7 @@
  */
 import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { api, ApiError } from "../../api/client";
+import { api, ApiError, mediaUrl } from "../../api/client";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
 
 const PENDING = "Information pending verification.";
@@ -75,7 +75,7 @@ function Hero({ title, subtitle }: { title: string; subtitle: string }) {
 interface LeadershipProfileOut {
   id: string; full_name: string; position: string; biography: string | null;
   responsibilities: string | null; experience: string | null; education: string | null;
-  profile_url: string | null; joining_date: string | null;
+  profile_url: string | null; joining_date: string | null; photo_url: string | null;
 }
 
 export function Leadership() {
@@ -95,6 +95,7 @@ export function Leadership() {
           <div className="grid cols-3">
             {data.map((p) => (
               <Link key={p.id} to={`/leadership/${p.id}`} className="panel" style={{ display: "block", textDecoration: "none" }}>
+                {p.photo_url && <img src={mediaUrl(p.photo_url)} alt="" style={{ width: "100%", aspectRatio: "1", objectFit: "cover", borderRadius: "var(--radius-md)", marginBottom: 8 }} />}
                 <h3>{p.full_name}</h3>
                 <p className="small muted">{p.position}</p>
               </Link>
@@ -123,6 +124,7 @@ export function LeadershipDetail() {
       <h1>{data.full_name}</h1>
       <p className="muted">{data.position}</p>
       <div className="panel">
+        {data.photo_url && <img src={mediaUrl(data.photo_url)} alt={data.full_name} style={{ width: 160, height: 160, objectFit: "cover", borderRadius: "var(--radius-md)", marginBottom: 16 }} />}
         <h3>Biography</h3>
         <p className="muted">{data.biography || PENDING}</p>
         <h3>Responsibilities</h3>
@@ -141,7 +143,7 @@ export function LeadershipDetail() {
 
 interface FacilityOut {
   id: string; name: string; facility_type: string | null; address: string | null;
-  description: string | null; capabilities: string | null; capacity: string | null;
+  description: string | null; capabilities: string | null; capacity: string | null; photo_url: string | null;
 }
 
 export function Manufacturing() {
@@ -162,6 +164,7 @@ export function Manufacturing() {
           <div className="grid cols-2">
             {data.map((f) => (
               <div className="panel" key={f.id}>
+                {f.photo_url && <img src={mediaUrl(f.photo_url)} alt="" style={{ width: "100%", aspectRatio: "16/9", objectFit: "cover", borderRadius: "var(--radius-md)", marginBottom: 8 }} />}
                 <h3>{f.name}</h3>
                 {f.facility_type && <p className="small muted">{f.facility_type}</p>}
                 <p className="small muted">{f.description || PENDING}</p>
@@ -176,7 +179,7 @@ export function Manufacturing() {
 
 // --- Research & Development ----------------------------------------------
 
-interface ResearchAreaOut { id: string; title: string; description: string | null; }
+interface ResearchAreaOut { id: string; title: string; description: string | null; image_url: string | null; }
 
 export function ResearchAndDevelopment() {
   const facilities = useQuery({
@@ -200,6 +203,7 @@ export function ResearchAndDevelopment() {
           <div className="grid cols-3">
             {areas.data.map((a) => (
               <div className="panel" key={a.id}>
+                {a.image_url && <img src={mediaUrl(a.image_url)} alt="" style={{ width: "100%", aspectRatio: "4/3", objectFit: "cover", borderRadius: "var(--radius-md)", marginBottom: 8 }} />}
                 <h3>{a.title}</h3>
                 <p className="small muted">{a.description || PENDING}</p>
               </div>
@@ -215,6 +219,7 @@ export function ResearchAndDevelopment() {
           <div className="grid cols-2">
             {facilities.data.map((f) => (
               <div className="panel" key={f.id}>
+                {f.photo_url && <img src={mediaUrl(f.photo_url)} alt="" style={{ width: "100%", aspectRatio: "16/9", objectFit: "cover", borderRadius: "var(--radius-md)", marginBottom: 8 }} />}
                 <h3>{f.name}</h3>
                 <p className="small muted">{f.description || PENDING}</p>
               </div>
@@ -230,7 +235,7 @@ export function ResearchAndDevelopment() {
 
 interface CertificationOut {
   id: string; name: string; certificate_number: string | null; issuing_organization: string | null;
-  issue_date: string | null; expiry_date: string | null; scope: string | null;
+  issue_date: string | null; expiry_date: string | null; scope: string | null; document_url: string | null;
 }
 
 export function QualityAndSafety() {
@@ -256,6 +261,7 @@ export function QualityAndSafety() {
                 {c.issuing_organization && <p className="small muted">Issued by {c.issuing_organization}</p>}
                 {c.certificate_number && <p className="small muted">Certificate no. {c.certificate_number}</p>}
                 <p className="small muted">{c.scope || PENDING}</p>
+                {c.document_url && <p className="small"><a href={mediaUrl(c.document_url)} target="_blank" rel="noreferrer">View certificate</a></p>}
               </div>
             ))}
           </div>
@@ -279,7 +285,7 @@ export function QualityAndSafety() {
 // --- Sustainability ---------------------------------------------------
 
 interface SustainabilityInitiativeOut {
-  id: string; title: string; description: string | null; category: string | null; measurable_results: string | null;
+  id: string; title: string; description: string | null; category: string | null; measurable_results: string | null; photo_url: string | null;
 }
 
 export function Sustainability() {
@@ -300,6 +306,7 @@ export function Sustainability() {
           <div className="grid cols-2">
             {data.map((i) => (
               <div className="panel" key={i.id}>
+                {i.photo_url && <img src={mediaUrl(i.photo_url)} alt="" style={{ width: "100%", aspectRatio: "16/9", objectFit: "cover", borderRadius: "var(--radius-md)", marginBottom: 8 }} />}
                 <h3>{i.title}</h3>
                 {i.category && <p className="small muted">{i.category}</p>}
                 <p className="small muted">{i.description || PENDING}</p>

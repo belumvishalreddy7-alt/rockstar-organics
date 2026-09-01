@@ -37,6 +37,18 @@ def _now() -> dt.datetime:
     return dt.datetime.utcnow()
 
 
+def _public_media_url(record: "MediaRecord | None") -> str | None:
+    """Corporate-content photo/document uploads are always is_public=True
+    (see media.py's upload_corporate_media), so the URL is always this
+    same public path - never resolved for a private record."""
+    if not record or not record.is_public:
+        return None
+    path = record.file_path
+    if path.startswith("public/"):
+        path = path[len("public/"):]
+    return f"/api/v1/media/public/{path}"
+
+
 # ---------------------------------------------------------------------------
 # Users, roles, auth
 # ---------------------------------------------------------------------------
@@ -896,6 +908,12 @@ class LeadershipProfile(Base, VerifiableMixin):
     joining_date: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
+    photo: Mapped["MediaRecord | None"] = relationship(foreign_keys=[photo_media_id], viewonly=True)
+
+    @property
+    def photo_url(self) -> str | None:
+        return _public_media_url(self.photo)
+
 
 class ManufacturingFacility(Base, VerifiableMixin):
     __tablename__ = "manufacturing_facilities"
@@ -912,6 +930,13 @@ class ManufacturingFacility(Base, VerifiableMixin):
     capacity: Mapped[str | None] = mapped_column(String(255), nullable=True)
     established_date: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     contact_info: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    photo_media_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("media_records.id"), nullable=True)
+
+    photo: Mapped["MediaRecord | None"] = relationship(foreign_keys=[photo_media_id], viewonly=True)
+
+    @property
+    def photo_url(self) -> str | None:
+        return _public_media_url(self.photo)
 
 
 class ResearchFacility(Base, VerifiableMixin):
@@ -924,6 +949,13 @@ class ResearchFacility(Base, VerifiableMixin):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     capabilities: Mapped[str | None] = mapped_column(Text, nullable=True)
     equipment_info: Mapped[str | None] = mapped_column(Text, nullable=True)
+    photo_media_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("media_records.id"), nullable=True)
+
+    photo: Mapped["MediaRecord | None"] = relationship(foreign_keys=[photo_media_id], viewonly=True)
+
+    @property
+    def photo_url(self) -> str | None:
+        return _public_media_url(self.photo)
 
 
 class ResearchArea(Base, VerifiableMixin):
@@ -934,6 +966,12 @@ class ResearchArea(Base, VerifiableMixin):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     image_media_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("media_records.id"), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    image: Mapped["MediaRecord | None"] = relationship(foreign_keys=[image_media_id], viewonly=True)
+
+    @property
+    def image_url(self) -> str | None:
+        return _public_media_url(self.image)
 
 
 class Certification(Base, VerifiableMixin):
@@ -948,6 +986,12 @@ class Certification(Base, VerifiableMixin):
     document_media_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("media_records.id"), nullable=True)
     scope: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    document: Mapped["MediaRecord | None"] = relationship(foreign_keys=[document_media_id], viewonly=True)
+
+    @property
+    def document_url(self) -> str | None:
+        return _public_media_url(self.document)
+
 
 class SustainabilityInitiative(Base, VerifiableMixin):
     __tablename__ = "sustainability_initiatives"
@@ -960,6 +1004,13 @@ class SustainabilityInitiative(Base, VerifiableMixin):
     measurable_results: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Only ever filled in with a real, sourced figure - never a placeholder
     # statistic invented to make the page look populated.
+    photo_media_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("media_records.id"), nullable=True)
+
+    photo: Mapped["MediaRecord | None"] = relationship(foreign_keys=[photo_media_id], viewonly=True)
+
+    @property
+    def photo_url(self) -> str | None:
+        return _public_media_url(self.photo)
 
 
 class StaffApplication(Base):

@@ -198,3 +198,35 @@ def test_corporate_media_upload_requires_owner_or_manager_role(client, approved_
                         files={"file": ("photo.jpg", b"\xff\xd8\xff" + b"x" * 20, "image/jpeg")})
     assert good.status_code == 200, good.text
     assert "id" in good.json()
+
+
+def test_corporate_entity_photo_upload_resolves_to_a_public_url(client, super_admin):
+    """Every corporate-content entity type has a photo/document field now,
+    not just leadership - upload the file, attach its id at create time,
+    and confirm the *_url the frontend actually renders resolves and
+    serves the real bytes (not just that the id round-trips)."""
+    _, email, password = super_admin
+    _login(client, email, password)
+
+    cases = [
+        ("/api/v1/leadership", "leadership_photo", {"full_name": "Test Person", "position": "CEO"}, "photo_media_id", "photo_url"),
+        ("/api/v1/manufacturing/facilities", "manufacturing_photo", {"name": "Test Facility"}, "photo_media_id", "photo_url"),
+        ("/api/v1/research/facilities", "research_photo", {"name": "Test Lab"}, "photo_media_id", "photo_url"),
+        ("/api/v1/research/areas", "research_photo", {"title": "Test Area"}, "image_media_id", "image_url"),
+        ("/api/v1/certifications", "certification_document", {"name": "Test Cert"}, "document_media_id", "document_url"),
+        ("/api/v1/sustainability/initiatives", "sustainability_photo", {"title": "Test Initiative"}, "photo_media_id", "photo_url"),
+    ]
+    for base, purpose, payload, media_field, url_field in cases:
+        upload = client.post(f"/api/v1/media/corporate/{purpose}", files={"file": ("f.jpg", b"\xff\xd8\xff" + b"x" * 20, "image/jpeg")})
+        assert upload.status_code == 200, f"{purpose}: {upload.text}"
+        media_id = upload.json()["id"]
+
+        create = client.post(base, json={**payload, media_field: media_id})
+        assert create.status_code == 200, f"{base}: {create.text}"
+        body = create.json()
+        assert body[media_field] == media_id
+        assert body[url_field], f"{base}: {url_field} did not resolve"
+
+        served = client.get(body[url_field])
+        assert served.status_code == 200, f"{base}: {url_field} -> {served.status_code}"
+        assert served.content == b"\xff\xd8\xff" + b"x" * 20
