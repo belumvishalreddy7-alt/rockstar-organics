@@ -7,7 +7,6 @@ import { useDocumentTitle } from "../../hooks/useDocumentTitle";
 
 interface ReviewItem { id: string; reviewer_name: string; rating: number; comment: string | null; created_at: string; }
 interface RatingBreakdown { "1": number; "2": number; "3": number; "4": number; "5": number; }
-interface PackSizeOut { id: string; quantity: string; unit: string; packaging_type: string | null; price: number | null; availability_status: string; }
 interface ProductOut {
   id: string; name: string; short_description: string | null; full_description: string | null;
   benefits: string | null; recommended_crops: string | null; application_method: string | null;
@@ -16,7 +15,6 @@ interface ProductOut {
   precautions: string | null; average_rating: number | null; approved_review_count: number;
   rating_breakdown: RatingBreakdown; reviews: ReviewItem[];
   images: { id: string; file_path: string; alt_text: string | null }[];
-  pack_size_records: PackSizeOut[];
 }
 
 export function ProductDetail() {
@@ -73,26 +71,6 @@ export function ProductDetail() {
           {data.manufacturing_date && <p><strong>Manufacturing date:</strong> {new Date(data.manufacturing_date).toLocaleDateString()}</p>}
           {data.expiry_date && <p><strong>Expiry date:</strong> {new Date(data.expiry_date).toLocaleDateString()}</p>}
           {data.precautions && <><h3>Precautions</h3><p>{data.precautions}</p></>}
-
-          {data.pack_size_records.length > 0 && (
-            <>
-              <h3>Pack sizes &amp; rate</h3>
-              <div className="table-scroll">
-                <table className="data-table">
-                  <thead><tr><th>Pack size</th><th>Rate</th><th>Availability</th></tr></thead>
-                  <tbody>
-                    {data.pack_size_records.map((ps) => (
-                      <tr key={ps.id}>
-                        <td>{ps.quantity} {ps.unit}{ps.packaging_type ? ` (${ps.packaging_type})` : ""}</td>
-                        <td>{ps.price != null ? `₹${ps.price.toFixed(2)}` : "Information pending verification."}</td>
-                        <td><span className={`badge ${ps.availability_status === "available" ? "badge-success" : "badge-neutral"}`}>{ps.availability_status.replace(/_/g, " ")}</span></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
         </div>
 
         <div className="panel">

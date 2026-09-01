@@ -94,32 +94,66 @@ def test_manufacturing_and_expiry_dates_editable_and_public(client, super_admin)
     assert public.json()["expiry_date"] == "2027-01-15"
 
 
-def test_delete_product_with_child_records(client, super_admin):
-    """Only images/reviews cascade via an ORM relationship - pack sizes,
-    crops, claims, certifications, and documents are plain FK-referencing
-    tables with no relationship on Product, so deleting a product that had
-    any of these 500'd on a foreign key violation instead of deleting
-    anything. Covers all five in one product so none of them can
-    regress silently."""
+def test_delete_product(client, super_admin):
     _, email, password = super_admin
     _login(client, email, password)
     r = client.post("/api/v1/products", json={"sku": "SKU-DEL", "name": "Deletable", "slug": "deletable",
                                             "precautions": "x", "full_description": "x"})
     pid = r.json()["id"]
 
-    assert client.post(f"/api/v1/products/{pid}/pack-sizes", json={"quantity": "500", "unit": "g"}).status_code == 200
-    assert client.post(f"/api/v1/products/{pid}/crops", json={"crop_name": "Paddy"}).status_code == 200
-    assert client.post(f"/api/v1/products/{pid}/claims", json={"claim_text": "Improves soil health.", "category": "benefit"}).status_code == 200
-    assert client.post(f"/api/v1/products/{pid}/certifications", json={"name": "Organic India"}).status_code == 200
-    doc_upload = client.post(f"/api/v1/media/products/{pid}/documents", files={"file": ("tds.pdf", b"%PDF-1.4 x", "application/pdf")})
-    assert client.post(f"/api/v1/products/{pid}/documents", json={
-        "document_type": "technical_data_sheet", "title": "TDS", "media_id": doc_upload.json()["id"],
-    }).status_code == 200
-
     deleted = client.delete(f"/api/v1/products/{pid}")
     assert deleted.status_code == 200, deleted.text
     remaining = client.get("/api/v1/products").json()["items"]
     assert not any(p["id"] == pid for p in remaining)
+
+
+def test_content_manager_can_verify_but_not_approve_or_publish_product(client, super_admin):
+    from app.core.permissions import ROLE_CONTENT_MANAGER
+    from tests.conftest import _make_user
+    import uuid
+
+    _, admin_email, admin_password = super_admin
+    _login(client, admin_email, admin_password)
+    r = client.post("/api/v1/products", json={"sku": "SKU-ROLE", "name": "Role Test Product", "slug": "role-test-product",
+                                            "precautions": "x", "full_description": "x"})
+    pid = r.json()["id"]
+    client.post("/api/v1/auth/logout")
+
+    cm_email, cm_password = f"cm-{uuid.uuid4().hex[:8]}@example.com", "Passw0rd123"
+    _make_user(ROLE_CONTENT_MANAGER, cm_email, cm_password)
+    _login(client, cm_email, cm_password)
+
+    # verifier can move it through the review-tier transitions...
+    submit = client.post(f"/api/v1/products/{pid}/transition/in_review", json={})
+    assert submit.status_code == 200
+
+    # ...but cannot approve, publish, or archive it - that's the approver's job.
+    assert client.post(f"/api/v1/products/{pid}/transition/approved", json={}).status_code == 403
+
+
+def test_product_image_upload_and_removal(client, super_admin):
+    _, email, password = super_admin
+    _login(client, email, password)
+    r = client.post("/api/v1/products", json={"sku": "SKU-IMAGE", "name": "Imaged Product", "slug": "imaged-product",
+                                            "precautions": "x", "full_description": "x"})
+    pid = r.json()["id"]
+
+    upload = client.post(f"/api/v1/media/products/{pid}/images?alt_text=Front%20of%20pack",
+                          files={"file": ("front.jpg", b"\xff\xd8\xff" + b"x" * 20, "image/jpeg")})
+    assert upload.status_code == 200, upload.text
+    image_id = upload.json()["id"]
+
+    listed = client.get("/api/v1/products").json()["items"]
+    product = next(p for p in listed if p["id"] == pid)
+    assert len(product["images"]) == 1
+    assert product["images"][0]["id"] == image_id
+
+    remove = client.delete(f"/api/v1/products/{pid}/images/{image_id}")
+    assert remove.status_code == 200
+
+    listed_after = client.get("/api/v1/products").json()["items"]
+    product_after = next(p for p in listed_after if p["id"] == pid)
+    assert product_after["images"] == []
 
 
 def test_sku_and_slug_uniqueness(client, super_admin):

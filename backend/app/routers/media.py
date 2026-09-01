@@ -75,34 +75,6 @@ def upload_product_label(product_id: str, file: UploadFile,
     return {"file_path": path, "original_filename": original_name}
 
 
-@router.post("/products/{product_id}/documents")
-def upload_product_document_file(product_id: str, file: UploadFile,
-                                  user: User = Depends(require_roles(*PRODUCT_CONTRIBUTORS)),
-                                  db: Session = Depends(get_db)):
-    """Uploads the underlying file only - same two-step pattern as company
-    documents. The caller then creates a ProductDocument record (POST
-    /api/v1/products/{product_id}/documents) referencing the returned id,
-    covering technical data sheets, safety data sheets, certificates,
-    registration documents, the official label artwork, brochures, and
-    other approved product documents - none of which are shown publicly
-    until a verifier marks them verified (see products.py verify_document)."""
-    product = db.get(Product, product_id)
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found.")
-    path, original_name, content_type, size = validate_and_store(
-        file, is_public=True, allow_pdf=True, max_size_bytes=settings.MAX_DOCUMENT_SIZE_BYTES,
-    )
-    record = MediaRecord(file_path=path, original_filename=original_name, content_type=content_type, size_bytes=size,
-                          is_public=True, purpose="product_document", entity_type="product", entity_id=product_id,
-                          uploaded_by_id=user.id)
-    db.add(record)
-    db.flush()
-    record_audit(db, actor_id=user.id, action="media.upload_product_document", entity_type="product", entity_id=product_id,
-                 summary=f"Document file uploaded for product {product.name}")
-    db.commit()
-    return {"id": record.id, "original_filename": original_name}
-
-
 def _assert_case_access(db: Session, case_id: str, user: User) -> FarmerSupportCase:
     case = db.get(FarmerSupportCase, case_id)
     if not case:

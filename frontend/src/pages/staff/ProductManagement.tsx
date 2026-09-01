@@ -5,12 +5,6 @@ import { useAuth } from "../../context/AuthContext";
 import { EmptyState } from "../../components/EmptyState";
 import { StatusBadge } from "../../components/StatusBadge";
 
-interface PackSize { id: string; quantity: string; unit: string; packaging_type: string | null; sku: string | null; price: number | null; availability_status: string; }
-interface Crop { id: string; crop_name: string; crop_category: string | null; target_use: string | null; application_stage: string | null; }
-interface Claim { id: string; claim_text: string; category: string; source_evidence: string | null; verification_status: string; }
-interface Certification { id: string; name: string; issuing_organization: string | null; certificate_number: string | null; verification_status: string; }
-interface ProductDocument { id: string; document_type: string; title: string; verification_status: string; }
-
 interface ProductRow {
   id: string; sku: string; name: string; status: string; slug: string;
   category_id: string | null; short_description: string | null; full_description: string | null;
@@ -20,8 +14,6 @@ interface ProductRow {
   active_ingredients: string | null; nutrient_content: string | null; concentration: string | null;
   formulation: string | null; grade: string | null; physical_form: string | null; technical_specifications: string | null;
   images: { id: string; file_path: string; alt_text: string | null }[];
-  pack_size_records: PackSize[]; crops: Crop[]; claims: Claim[];
-  certifications: Certification[]; documents: ProductDocument[];
 }
 
 interface Category { id: string; name: string; slug: string; }
@@ -159,9 +151,6 @@ function fieldsToPayload(v: ProductFieldValues) {
   };
 }
 
-const DOCUMENT_TYPES = ["technical_data_sheet", "specification", "safety_data_sheet", "certificate", "registration", "label", "brochure", "catalogue", "regulatory", "other"];
-const CLAIM_CATEGORIES = ["benefit", "technical", "crop", "quality", "certification"];
-
 export function ProductManagement() {
   const { user } = useAuth();
   const qc = useQueryClient();
@@ -229,71 +218,6 @@ export function ProductManagement() {
 
   const removeImage = useMutation({
     mutationFn: ({ id, imageId }: { id: string; imageId: string }) => api.del(`/products/${id}/images/${imageId}`),
-    onSuccess: invalidate, onError: onErr,
-  });
-
-  const addPackSize = useMutation({
-    mutationFn: ({ id, body }: { id: string; body: Record<string, string | number | null> }) => api.post(`/products/${id}/pack-sizes`, body),
-    onSuccess: invalidate, onError: onErr,
-  });
-  const removePackSize = useMutation({
-    mutationFn: ({ id, itemId }: { id: string; itemId: string }) => api.del(`/products/${id}/pack-sizes/${itemId}`),
-    onSuccess: invalidate, onError: onErr,
-  });
-
-  const addCrop = useMutation({
-    mutationFn: ({ id, body }: { id: string; body: Record<string, string> }) => api.post(`/products/${id}/crops`, body),
-    onSuccess: invalidate, onError: onErr,
-  });
-  const removeCrop = useMutation({
-    mutationFn: ({ id, itemId }: { id: string; itemId: string }) => api.del(`/products/${id}/crops/${itemId}`),
-    onSuccess: invalidate, onError: onErr,
-  });
-
-  const addClaim = useMutation({
-    mutationFn: ({ id, body }: { id: string; body: Record<string, string> }) => api.post(`/products/${id}/claims`, body),
-    onSuccess: invalidate, onError: onErr,
-  });
-  const verifyClaim = useMutation({
-    mutationFn: ({ id, itemId, status }: { id: string; itemId: string; status: string }) =>
-      api.post(`/products/${id}/claims/${itemId}/verify`, { verification_status: status }),
-    onSuccess: invalidate, onError: onErr,
-  });
-  const removeClaim = useMutation({
-    mutationFn: ({ id, itemId }: { id: string; itemId: string }) => api.del(`/products/${id}/claims/${itemId}`),
-    onSuccess: invalidate, onError: onErr,
-  });
-
-  const addCertification = useMutation({
-    mutationFn: ({ id, body }: { id: string; body: Record<string, string> }) => api.post(`/products/${id}/certifications`, body),
-    onSuccess: invalidate, onError: onErr,
-  });
-  const verifyCertification = useMutation({
-    mutationFn: ({ id, itemId, status }: { id: string; itemId: string; status: string }) =>
-      api.post(`/products/${id}/certifications/${itemId}/verify`, { verification_status: status }),
-    onSuccess: invalidate, onError: onErr,
-  });
-  const removeCertification = useMutation({
-    mutationFn: ({ id, itemId }: { id: string; itemId: string }) => api.del(`/products/${id}/certifications/${itemId}`),
-    onSuccess: invalidate, onError: onErr,
-  });
-
-  const uploadDocument = useMutation({
-    mutationFn: async ({ id, file, documentType, title }: { id: string; file: File; documentType: string; title: string }) => {
-      const formData = new FormData();
-      formData.append("file", file);
-      const uploaded = await uploadFile<{ id: string }>(`/media/products/${id}/documents`, formData);
-      return api.post(`/products/${id}/documents`, { document_type: documentType, title, media_id: uploaded.id });
-    },
-    onSuccess: invalidate, onError: onErr,
-  });
-  const verifyDocument = useMutation({
-    mutationFn: ({ id, itemId, status }: { id: string; itemId: string; status: string }) =>
-      api.post(`/products/${id}/documents/${itemId}/verify`, { verification_status: status }),
-    onSuccess: invalidate, onError: onErr,
-  });
-  const removeDocument = useMutation({
-    mutationFn: ({ id, itemId }: { id: string; itemId: string }) => api.del(`/products/${id}/documents/${itemId}`),
     onSuccess: invalidate, onError: onErr,
   });
 
@@ -399,19 +323,6 @@ export function ProductManagement() {
                   <ProductDetailPanel
                     product={p}
                     onRemoveImage={(imageId) => removeImage.mutate({ id: p.id, imageId })}
-                    onAddPackSize={(body) => addPackSize.mutate({ id: p.id, body })}
-                    onRemovePackSize={(itemId) => removePackSize.mutate({ id: p.id, itemId })}
-                    onAddCrop={(body) => addCrop.mutate({ id: p.id, body })}
-                    onRemoveCrop={(itemId) => removeCrop.mutate({ id: p.id, itemId })}
-                    onAddClaim={(body) => addClaim.mutate({ id: p.id, body })}
-                    onVerifyClaim={(itemId, status) => verifyClaim.mutate({ id: p.id, itemId, status })}
-                    onRemoveClaim={(itemId) => removeClaim.mutate({ id: p.id, itemId })}
-                    onAddCertification={(body) => addCertification.mutate({ id: p.id, body })}
-                    onVerifyCertification={(itemId, status) => verifyCertification.mutate({ id: p.id, itemId, status })}
-                    onRemoveCertification={(itemId) => removeCertification.mutate({ id: p.id, itemId })}
-                    onUploadDocument={(file, documentType, title) => uploadDocument.mutate({ id: p.id, file, documentType, title })}
-                    onVerifyDocument={(itemId, status) => verifyDocument.mutate({ id: p.id, itemId, status })}
-                    onRemoveDocument={(itemId) => removeDocument.mutate({ id: p.id, itemId })}
                   />
                 </td>
               </tr>
@@ -445,27 +356,7 @@ function ProductEditForm({ product, categories, onCategoryCreated, onSave, isSav
   );
 }
 
-function ProductDetailPanel({
-  product, onRemoveImage, onAddPackSize, onRemovePackSize, onAddCrop, onRemoveCrop,
-  onAddClaim, onVerifyClaim, onRemoveClaim,
-  onAddCertification, onVerifyCertification, onRemoveCertification,
-  onUploadDocument, onVerifyDocument, onRemoveDocument,
-}: {
-  product: ProductRow;
-  onRemoveImage: (id: string) => void;
-  onAddPackSize: (body: Record<string, string | number | null>) => void; onRemovePackSize: (id: string) => void;
-  onAddCrop: (body: Record<string, string>) => void; onRemoveCrop: (id: string) => void;
-  onAddClaim: (body: Record<string, string>) => void; onVerifyClaim: (id: string, status: string) => void; onRemoveClaim: (id: string) => void;
-  onAddCertification: (body: Record<string, string>) => void; onVerifyCertification: (id: string, status: string) => void; onRemoveCertification: (id: string) => void;
-  onUploadDocument: (file: File, documentType: string, title: string) => void; onVerifyDocument: (id: string, status: string) => void; onRemoveDocument: (id: string) => void;
-}) {
-  const [packSize, setPackSize] = useState({ quantity: "", unit: "", packaging_type: "", price: "" });
-  const [crop, setCrop] = useState({ crop_name: "", crop_category: "", target_use: "", application_stage: "" });
-  const [claim, setClaim] = useState({ claim_text: "", category: "benefit", source_evidence: "" });
-  const [cert, setCert] = useState({ name: "", issuing_organization: "", certificate_number: "" });
-  const [docTitle, setDocTitle] = useState("");
-  const [docType, setDocType] = useState("technical_data_sheet");
-
+function ProductDetailPanel({ product, onRemoveImage }: { product: ProductRow; onRemoveImage: (id: string) => void }) {
   return (
     <div className="panel" style={{ background: "var(--surface-alt, #f7f7f5)" }}>
       <h3>Images</h3>
@@ -482,131 +373,6 @@ function ProductDetailPanel({
             <button className="btn btn-danger btn-sm" onClick={() => onRemoveImage(img.id)}>Remove</button>
           </div>
         ))}
-      </div>
-
-      <h3>Pack sizes &amp; rate</h3>
-      <ul>
-        {product.pack_size_records.map((ps) => (
-          <li key={ps.id}>
-            {ps.quantity} {ps.unit}{ps.packaging_type ? ` (${ps.packaging_type})` : ""} - {ps.price != null ? `₹${ps.price.toFixed(2)}` : "rate pending"} - {ps.availability_status}
-            <button className="btn btn-ghost btn-sm" onClick={() => onRemovePackSize(ps.id)}>Remove</button>
-          </li>
-        ))}
-        {product.pack_size_records.length === 0 && <li className="muted">None added yet.</li>}
-      </ul>
-      <form className="inline" onSubmit={(e) => {
-        e.preventDefault();
-        if (!packSize.quantity || !packSize.unit) return;
-        onAddPackSize({
-          quantity: packSize.quantity, unit: packSize.unit, packaging_type: packSize.packaging_type || null,
-          price: packSize.price ? Number(packSize.price) : null,
-        });
-        setPackSize({ quantity: "", unit: "", packaging_type: "", price: "" });
-      }}>
-        <input placeholder="Quantity (e.g. 500)" value={packSize.quantity} onChange={(e) => setPackSize({ ...packSize, quantity: e.target.value })} style={{ width: 120 }} />
-        <input placeholder="Unit (e.g. ml, L, g, kg)" value={packSize.unit} onChange={(e) => setPackSize({ ...packSize, unit: e.target.value })} style={{ width: 110 }} />
-        <input placeholder="Packaging type" value={packSize.packaging_type} onChange={(e) => setPackSize({ ...packSize, packaging_type: e.target.value })} style={{ width: 140 }} />
-        <input type="number" min="0" step="0.01" placeholder="Rate (₹)" value={packSize.price} onChange={(e) => setPackSize({ ...packSize, price: e.target.value })} style={{ width: 110 }} />
-        <button className="btn btn-secondary btn-sm" type="submit">Add pack size</button>
-      </form>
-
-      <h3>Crop associations</h3>
-      <ul>
-        {product.crops.map((c) => (
-          <li key={c.id}>
-            {c.crop_name}{c.application_stage ? ` - ${c.application_stage}` : ""}
-            <button className="btn btn-ghost btn-sm" onClick={() => onRemoveCrop(c.id)}>Remove</button>
-          </li>
-        ))}
-        {product.crops.length === 0 && <li className="muted">None added yet.</li>}
-      </ul>
-      <form className="inline" onSubmit={(e) => { e.preventDefault(); if (!crop.crop_name) return; onAddCrop(crop); setCrop({ crop_name: "", crop_category: "", target_use: "", application_stage: "" }); }}>
-        <input placeholder="Crop name" value={crop.crop_name} onChange={(e) => setCrop({ ...crop, crop_name: e.target.value })} style={{ width: 140 }} />
-        <input placeholder="Application stage" value={crop.application_stage} onChange={(e) => setCrop({ ...crop, application_stage: e.target.value })} style={{ width: 140 }} />
-        <button className="btn btn-secondary btn-sm" type="submit">Add crop</button>
-      </form>
-
-      <h3>Claims</h3>
-      <ul>
-        {product.claims.map((c) => (
-          <li key={c.id}>
-            <StatusBadge status={c.verification_status} /> {c.claim_text} ({c.category})
-            {c.verification_status === "pending" && (
-              <>
-                <button className="btn btn-ghost btn-sm" onClick={() => onVerifyClaim(c.id, "verified")}>Verify</button>
-                <button className="btn btn-ghost btn-sm" onClick={() => onVerifyClaim(c.id, "rejected")}>Reject</button>
-              </>
-            )}
-            <button className="btn btn-ghost btn-sm" onClick={() => onRemoveClaim(c.id)}>Remove</button>
-          </li>
-        ))}
-        {product.claims.length === 0 && <li className="muted">None added yet.</li>}
-      </ul>
-      <form className="inline" onSubmit={(e) => { e.preventDefault(); if (!claim.claim_text) return; onAddClaim(claim); setClaim({ claim_text: "", category: "benefit", source_evidence: "" }); }}>
-        <input placeholder="Claim text" value={claim.claim_text} onChange={(e) => setClaim({ ...claim, claim_text: e.target.value })} style={{ width: 220 }} />
-        <select value={claim.category} onChange={(e) => setClaim({ ...claim, category: e.target.value })}>
-          {CLAIM_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
-        <input placeholder="Source / evidence" value={claim.source_evidence} onChange={(e) => setClaim({ ...claim, source_evidence: e.target.value })} style={{ width: 160 }} />
-        <button className="btn btn-secondary btn-sm" type="submit">Add claim</button>
-      </form>
-
-      <h3>Certifications</h3>
-      <ul>
-        {product.certifications.map((c) => (
-          <li key={c.id}>
-            <StatusBadge status={c.verification_status} /> {c.name}{c.issuing_organization ? ` - ${c.issuing_organization}` : ""}
-            {c.verification_status === "pending" && (
-              <>
-                <button className="btn btn-ghost btn-sm" onClick={() => onVerifyCertification(c.id, "verified")}>Verify</button>
-                <button className="btn btn-ghost btn-sm" onClick={() => onVerifyCertification(c.id, "rejected")}>Reject</button>
-              </>
-            )}
-            <button className="btn btn-ghost btn-sm" onClick={() => onRemoveCertification(c.id)}>Remove</button>
-          </li>
-        ))}
-        {product.certifications.length === 0 && <li className="muted">None added yet.</li>}
-      </ul>
-      <form className="inline" onSubmit={(e) => { e.preventDefault(); if (!cert.name) return; onAddCertification(cert); setCert({ name: "", issuing_organization: "", certificate_number: "" }); }}>
-        <input placeholder="Certification name" value={cert.name} onChange={(e) => setCert({ ...cert, name: e.target.value })} style={{ width: 180 }} />
-        <input placeholder="Issuing organization" value={cert.issuing_organization} onChange={(e) => setCert({ ...cert, issuing_organization: e.target.value })} style={{ width: 180 }} />
-        <input placeholder="Certificate number" value={cert.certificate_number} onChange={(e) => setCert({ ...cert, certificate_number: e.target.value })} style={{ width: 160 }} />
-        <button className="btn btn-secondary btn-sm" type="submit">Add certification</button>
-      </form>
-
-      <h3>Documents</h3>
-      <ul>
-        {product.documents.map((d) => (
-          <li key={d.id}>
-            <StatusBadge status={d.verification_status} /> {d.title} ({d.document_type.replace(/_/g, " ")})
-            {d.verification_status === "pending" && (
-              <>
-                <button className="btn btn-ghost btn-sm" onClick={() => onVerifyDocument(d.id, "verified")}>Verify</button>
-                <button className="btn btn-ghost btn-sm" onClick={() => onVerifyDocument(d.id, "rejected")}>Reject</button>
-              </>
-            )}
-            <button className="btn btn-ghost btn-sm" onClick={() => onRemoveDocument(d.id)}>Remove</button>
-          </li>
-        ))}
-        {product.documents.length === 0 && <li className="muted">None uploaded yet.</li>}
-      </ul>
-      <div className="inline">
-        <input placeholder="Document title" value={docTitle} onChange={(e) => setDocTitle(e.target.value)} style={{ width: 180 }} />
-        <select value={docType} onChange={(e) => setDocType(e.target.value)}>
-          {DOCUMENT_TYPES.map((t) => <option key={t} value={t}>{t.replace(/_/g, " ")}</option>)}
-        </select>
-        <label className="btn btn-secondary btn-sm" style={{ cursor: "pointer" }}>
-          Upload document
-          <input
-            type="file" accept=".pdf,image/jpeg,image/png,image/webp" style={{ display: "none" }}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file && docTitle.trim()) { onUploadDocument(file, docType, docTitle.trim()); setDocTitle(""); }
-              e.target.value = "";
-            }}
-          />
-        </label>
-        {!docTitle.trim() && <span className="muted">Enter a title first</span>}
       </div>
     </div>
   );

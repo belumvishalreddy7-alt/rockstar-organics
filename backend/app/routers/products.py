@@ -10,25 +10,14 @@ from app.core.deps import require_roles, require_user
 from app.core.permissions import CONTENT_VERIFIERS, PRODUCT_CONTRIBUTORS, PRODUCT_MANAGERS, SETTINGS_MANAGERS
 from app.models.models import (
     Product,
-    ProductCertification,
-    ProductClaim,
-    ProductCrop,
-    ProductDocument,
     ProductImage,
-    ProductPackSize,
     ProductReview,
     User,
 )
 from app.schemas.schemas import (
-    ProductCertificationCreate,
-    ProductClaimCreate,
     ProductCreate,
-    ProductCropCreate,
-    ProductDocumentCreate,
-    ProductPackSizeCreate,
     ProductStatusChange,
     ProductUpdate,
-    VerificationStatusChange,
 )
 
 router = APIRouter(prefix="/api/v1/products", tags=["products"])
@@ -114,53 +103,7 @@ def _rating_summaries(db: Session, product_ids: list[str]) -> dict[str, dict]:
     return summaries
 
 
-def _pack_size_out(ps: ProductPackSize) -> dict:
-    return {"id": ps.id, "quantity": ps.quantity, "unit": ps.unit, "packaging_type": ps.packaging_type,
-            "sku": ps.sku, "price": float(ps.price) if ps.price is not None else None,
-            "availability_status": ps.availability_status}
-
-
-def _crop_out(c: ProductCrop) -> dict:
-    return {"id": c.id, "crop_name": c.crop_name, "crop_category": c.crop_category,
-            "target_use": c.target_use, "application_stage": c.application_stage}
-
-
-def _claim_out(c: ProductClaim) -> dict:
-    return {"id": c.id, "claim_text": c.claim_text, "category": c.category,
-            "source_evidence": c.source_evidence, "verification_status": c.verification_status}
-
-
-def _certification_out(c: ProductCertification) -> dict:
-    return {"id": c.id, "name": c.name, "issuing_organization": c.issuing_organization,
-            "certificate_number": c.certificate_number,
-            "issue_date": c.issue_date.isoformat() if c.issue_date else None,
-            "expiry_date": c.expiry_date.isoformat() if c.expiry_date else None,
-            "media_id": c.media_id, "verification_status": c.verification_status}
-
-
-def _document_out(d: ProductDocument) -> dict:
-    return {"id": d.id, "document_type": d.document_type, "title": d.title, "version": d.version,
-            "issue_date": d.issue_date.isoformat() if d.issue_date else None,
-            "expiry_date": d.expiry_date.isoformat() if d.expiry_date else None,
-            "document_number": d.document_number, "media_id": d.media_id,
-            "verification_status": d.verification_status}
-
-
-def _serialize(db: Session, p: Product, rating_summary: dict, *, public: bool = False) -> dict:
-    pack_sizes = db.query(ProductPackSize).filter(ProductPackSize.product_id == p.id).order_by(ProductPackSize.sort_order).all()
-    crops = db.query(ProductCrop).filter(ProductCrop.product_id == p.id).order_by(ProductCrop.sort_order).all()
-    claims = db.query(ProductClaim).filter(ProductClaim.product_id == p.id).all()
-    certifications = db.query(ProductCertification).filter(ProductCertification.product_id == p.id).all()
-    documents = db.query(ProductDocument).filter(ProductDocument.product_id == p.id).all()
-    if public:
-        # A claim/certification/document is only shown publicly once
-        # verified - an unverified one existing internally must never leak
-        # onto the public product page, matching the "no unsupported claim"
-        # rule from the spec.
-        claims = [c for c in claims if c.verification_status == "verified"]
-        certifications = [c for c in certifications if c.verification_status == "verified"]
-        documents = [d for d in documents if d.verification_status == "verified"]
-
+def _serialize(p: Product, rating_summary: dict) -> dict:
     return {
         "id": p.id, "sku": p.sku, "name": p.name, "slug": p.slug, "category_id": p.category_id,
         "product_type": p.product_type, "short_description": p.short_description,
@@ -178,11 +121,6 @@ def _serialize(db: Session, p: Product, rating_summary: dict, *, public: bool = 
         "status": p.status, "featured": p.featured,
         "updated_at": p.updated_at.isoformat() if p.updated_at else None,
         "images": [{"id": i.id, "file_path": i.file_path, "alt_text": i.alt_text} for i in p.images],
-        "pack_size_records": [_pack_size_out(x) for x in pack_sizes],
-        "crops": [_crop_out(x) for x in crops],
-        "claims": [_claim_out(x) for x in claims],
-        "certifications": [_certification_out(x) for x in certifications],
-        "documents": [_document_out(x) for x in documents],
         **rating_summary,
     }
 
@@ -208,7 +146,7 @@ def public_catalogue(
     items = query.order_by(Product.published_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
     summaries = _rating_summaries(db, [p.id for p in items])
     return {"total": total, "page": page, "page_size": page_size,
-            "items": [_serialize(db, p, summaries[p.id], public=True) for p in items]}
+            "items": [_serialize(p, summaries[p.id]) for p in items]}
 
 
 @router.get("/public/{slug}")
@@ -216,7 +154,7 @@ def public_product_detail(slug: str, db: Session = Depends(get_db)):
     p = db.query(Product).filter(Product.slug == slug, Product.status == "published").first()
     if not p:
         raise HTTPException(status_code=404, detail="Product not found.")
-    out = _serialize(db, p, _rating_summaries(db, [p.id])[p.id], public=True)
+    out = _serialize(p, _rating_summaries(db, [p.id])[p.id])
     reviews = db.query(ProductReview).filter(ProductReview.product_id == p.id, ProductReview.status == "approved").order_by(ProductReview.created_at.desc()).all()
     out["reviews"] = [{"id": r.id, "reviewer_name": r.reviewer_name, "rating": r.rating, "comment": r.comment, "created_at": r.created_at.isoformat()} for r in reviews]
     return out
@@ -232,7 +170,7 @@ def admin_list_products(status: str | None = None, page: int = 1, page_size: int
     total = query.count()
     items = query.order_by(Product.updated_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
     summaries = _rating_summaries(db, [p.id for p in items])
-    return {"total": total, "items": [_serialize(db, p, summaries[p.id]) for p in items]}
+    return {"total": total, "items": [_serialize(p, summaries[p.id]) for p in items]}
 
 
 @router.post("")
@@ -248,7 +186,7 @@ def create_product(payload: ProductCreate, user: User = Depends(require_roles(*P
     record_audit(db, actor_id=user.id, action="product.create", entity_type="product", entity_id=p.id, summary=f"Created draft product {p.name}")
     db.commit()
     db.refresh(p)
-    return _serialize(db, p, _rating_summaries(db, [p.id])[p.id])
+    return _serialize(p, _rating_summaries(db, [p.id])[p.id])
 
 
 @router.put("/{product_id}")
@@ -263,7 +201,7 @@ def update_product(product_id: str, payload: ProductUpdate, user: User = Depends
     record_audit(db, actor_id=user.id, action="product.update", entity_type="product", entity_id=p.id, summary=f"Updated product {p.name}")
     db.commit()
     db.refresh(p)
-    return _serialize(db, p, _rating_summaries(db, [p.id])[p.id])
+    return _serialize(p, _rating_summaries(db, [p.id])[p.id])
 
 
 @router.post("/{product_id}/transition/{new_status}")
@@ -308,7 +246,7 @@ def transition_product(product_id: str, new_status: str, payload: ProductStatusC
                  summary=f"Product {p.name} moved from {old_status} to {new_status}")
     db.commit()
     db.refresh(p)
-    return _serialize(db, p, _rating_summaries(db, [p.id])[p.id])
+    return _serialize(p, _rating_summaries(db, [p.id])[p.id])
 
 
 @router.delete("/{product_id}")
@@ -317,14 +255,7 @@ def delete_product(product_id: str, user: User = Depends(require_roles("super_ad
     if not p:
         raise HTTPException(status_code=404, detail="Product not found.")
     record_audit(db, actor_id=user.id, action="product.delete", entity_type="product", entity_id=p.id, summary=f"Permanently deleted product {p.name}")
-    # images/reviews cascade via their ORM relationship (cascade="all,
-    # delete-orphan" on Product), but pack sizes/crops/claims/
-    # certifications/documents are only ever queried ad hoc by product_id
-    # elsewhere in this router - no relationship means no cascade, so
-    # deleting a product with any of these left it 500ing on a foreign key
-    # violation instead of actually deleting anything.
-    for model in (ProductPackSize, ProductCrop, ProductClaim, ProductCertification, ProductDocument):
-        db.query(model).filter(model.product_id == p.id).delete()
+    # images/reviews cascade via their ORM relationship (cascade="all, delete-orphan" on Product).
     db.delete(p)
     db.commit()
     return {"ok": True}
@@ -351,196 +282,5 @@ def remove_image(product_id: str, image_id: str, user: User = Depends(require_ro
     db.delete(row)
     record_audit(db, actor_id=user.id, action="product.image.remove", entity_type="product", entity_id=p.id,
                  summary=f"Image removed from {p.name}")
-    db.commit()
-    return {"ok": True}
-
-
-# --- Pack sizes ---------------------------------------------------------
-
-@router.post("/{product_id}/pack-sizes")
-def add_pack_size(product_id: str, payload: ProductPackSizeCreate,
-                   user: User = Depends(require_roles(*PRODUCT_CONTRIBUTORS)), db: Session = Depends(get_db)):
-    p = _get_product_or_404(db, product_id)
-    row = ProductPackSize(product_id=p.id, sort_order=db.query(ProductPackSize).filter(ProductPackSize.product_id == p.id).count(),
-                           **payload.model_dump())
-    db.add(row)
-    record_audit(db, actor_id=user.id, action="product.pack_size.add", entity_type="product", entity_id=p.id,
-                 summary=f"Pack size added to {p.name}: {payload.quantity} {payload.unit}")
-    db.commit()
-    return _pack_size_out(row)
-
-
-@router.delete("/{product_id}/pack-sizes/{pack_size_id}")
-def remove_pack_size(product_id: str, pack_size_id: str,
-                      user: User = Depends(require_roles(*PRODUCT_CONTRIBUTORS)), db: Session = Depends(get_db)):
-    p = _get_product_or_404(db, product_id)
-    row = db.get(ProductPackSize, pack_size_id)
-    if not row or row.product_id != p.id:
-        raise HTTPException(status_code=404, detail="Pack size not found.")
-    db.delete(row)
-    record_audit(db, actor_id=user.id, action="product.pack_size.remove", entity_type="product", entity_id=p.id, summary=f"Pack size removed from {p.name}")
-    db.commit()
-    return {"ok": True}
-
-
-# --- Crops ---------------------------------------------------------------
-
-@router.post("/{product_id}/crops")
-def add_crop(product_id: str, payload: ProductCropCreate,
-             user: User = Depends(require_roles(*PRODUCT_CONTRIBUTORS)), db: Session = Depends(get_db)):
-    p = _get_product_or_404(db, product_id)
-    row = ProductCrop(product_id=p.id, sort_order=db.query(ProductCrop).filter(ProductCrop.product_id == p.id).count(),
-                       **payload.model_dump())
-    db.add(row)
-    record_audit(db, actor_id=user.id, action="product.crop.add", entity_type="product", entity_id=p.id,
-                 summary=f"Crop association added to {p.name}: {payload.crop_name}")
-    db.commit()
-    return _crop_out(row)
-
-
-@router.delete("/{product_id}/crops/{crop_id}")
-def remove_crop(product_id: str, crop_id: str,
-                 user: User = Depends(require_roles(*PRODUCT_CONTRIBUTORS)), db: Session = Depends(get_db)):
-    p = _get_product_or_404(db, product_id)
-    row = db.get(ProductCrop, crop_id)
-    if not row or row.product_id != p.id:
-        raise HTTPException(status_code=404, detail="Crop association not found.")
-    db.delete(row)
-    record_audit(db, actor_id=user.id, action="product.crop.remove", entity_type="product", entity_id=p.id, summary=f"Crop association removed from {p.name}")
-    db.commit()
-    return {"ok": True}
-
-
-# --- Claims ----------------------------------------------------------------
-
-@router.post("/{product_id}/claims")
-def add_claim(product_id: str, payload: ProductClaimCreate,
-              user: User = Depends(require_roles(*PRODUCT_CONTRIBUTORS)), db: Session = Depends(get_db)):
-    p = _get_product_or_404(db, product_id)
-    row = ProductClaim(product_id=p.id, **payload.model_dump())
-    db.add(row)
-    record_audit(db, actor_id=user.id, action="product.claim.add", entity_type="product", entity_id=p.id, summary=f"Claim added to {p.name}")
-    db.commit()
-    return _claim_out(row)
-
-
-@router.post("/{product_id}/claims/{claim_id}/verify")
-def verify_claim(product_id: str, claim_id: str, payload: VerificationStatusChange,
-                  user: User = Depends(require_roles(*CONTENT_VERIFIERS)), db: Session = Depends(get_db)):
-    """A claim is never shown on the public product page until a verifier
-    (never the submitter) marks it verified - see _serialize's public
-    filtering above."""
-    p = _get_product_or_404(db, product_id)
-    row = db.get(ProductClaim, claim_id)
-    if not row or row.product_id != p.id:
-        raise HTTPException(status_code=404, detail="Claim not found.")
-    row.verification_status = payload.verification_status
-    row.verified_by_id = user.id
-    row.verified_at = dt.datetime.utcnow()
-    record_audit(db, actor_id=user.id, action="product.claim.verify", entity_type="product", entity_id=p.id,
-                 summary=f"Claim on {p.name} marked {payload.verification_status}")
-    db.commit()
-    return _claim_out(row)
-
-
-@router.delete("/{product_id}/claims/{claim_id}")
-def remove_claim(product_id: str, claim_id: str,
-                  user: User = Depends(require_roles(*PRODUCT_CONTRIBUTORS)), db: Session = Depends(get_db)):
-    p = _get_product_or_404(db, product_id)
-    row = db.get(ProductClaim, claim_id)
-    if not row or row.product_id != p.id:
-        raise HTTPException(status_code=404, detail="Claim not found.")
-    db.delete(row)
-    record_audit(db, actor_id=user.id, action="product.claim.remove", entity_type="product", entity_id=p.id, summary=f"Claim removed from {p.name}")
-    db.commit()
-    return {"ok": True}
-
-
-# --- Certifications ----------------------------------------------------
-
-@router.post("/{product_id}/certifications")
-def add_certification(product_id: str, payload: ProductCertificationCreate,
-                       user: User = Depends(require_roles(*PRODUCT_CONTRIBUTORS)), db: Session = Depends(get_db)):
-    p = _get_product_or_404(db, product_id)
-    row = ProductCertification(product_id=p.id, **payload.model_dump())
-    db.add(row)
-    record_audit(db, actor_id=user.id, action="product.certification.add", entity_type="product", entity_id=p.id,
-                 summary=f"Certification added to {p.name}: {payload.name}")
-    db.commit()
-    return _certification_out(row)
-
-
-@router.post("/{product_id}/certifications/{certification_id}/verify")
-def verify_certification(product_id: str, certification_id: str, payload: VerificationStatusChange,
-                          user: User = Depends(require_roles(*CONTENT_VERIFIERS)), db: Session = Depends(get_db)):
-    p = _get_product_or_404(db, product_id)
-    row = db.get(ProductCertification, certification_id)
-    if not row or row.product_id != p.id:
-        raise HTTPException(status_code=404, detail="Certification not found.")
-    row.verification_status = payload.verification_status
-    record_audit(db, actor_id=user.id, action="product.certification.verify", entity_type="product", entity_id=p.id,
-                 summary=f"Certification on {p.name} marked {payload.verification_status}")
-    db.commit()
-    return _certification_out(row)
-
-
-@router.delete("/{product_id}/certifications/{certification_id}")
-def remove_certification(product_id: str, certification_id: str,
-                          user: User = Depends(require_roles(*PRODUCT_CONTRIBUTORS)), db: Session = Depends(get_db)):
-    p = _get_product_or_404(db, product_id)
-    row = db.get(ProductCertification, certification_id)
-    if not row or row.product_id != p.id:
-        raise HTTPException(status_code=404, detail="Certification not found.")
-    db.delete(row)
-    record_audit(db, actor_id=user.id, action="product.certification.remove", entity_type="product", entity_id=p.id, summary=f"Certification removed from {p.name}")
-    db.commit()
-    return {"ok": True}
-
-
-# --- Documents (technical data sheets, SDS, labels, brochures, ...) ------
-
-@router.post("/{product_id}/documents")
-def add_document(product_id: str, payload: ProductDocumentCreate,
-                  user: User = Depends(require_roles(*PRODUCT_CONTRIBUTORS)), db: Session = Depends(get_db)):
-    """Metadata only - the actual file is uploaded first via
-    POST /api/v1/media/products/{product_id}/documents, which returns the
-    media_id this call references."""
-    p = _get_product_or_404(db, product_id)
-    row = ProductDocument(product_id=p.id, uploaded_by_id=user.id, **payload.model_dump())
-    db.add(row)
-    record_audit(db, actor_id=user.id, action="product.document.add", entity_type="product", entity_id=p.id,
-                 summary=f"Document added to {p.name}: {payload.title} ({payload.document_type})")
-    db.commit()
-    return _document_out(row)
-
-
-@router.post("/{product_id}/documents/{document_id}/verify")
-def verify_document(product_id: str, document_id: str, payload: VerificationStatusChange,
-                     user: User = Depends(require_roles(*CONTENT_VERIFIERS)), db: Session = Depends(get_db)):
-    """Covers the official label/package artwork too (document_type="label")
-    - it must be verified here, same as any other product document, before
-    _serialize's public filtering will ever include it."""
-    p = _get_product_or_404(db, product_id)
-    row = db.get(ProductDocument, document_id)
-    if not row or row.product_id != p.id:
-        raise HTTPException(status_code=404, detail="Document not found.")
-    row.verification_status = payload.verification_status
-    row.reviewed_by_id = user.id
-    row.reviewed_at = dt.datetime.utcnow()
-    record_audit(db, actor_id=user.id, action="product.document.verify", entity_type="product", entity_id=p.id,
-                 summary=f"Document on {p.name} marked {payload.verification_status}")
-    db.commit()
-    return _document_out(row)
-
-
-@router.delete("/{product_id}/documents/{document_id}")
-def remove_document(product_id: str, document_id: str,
-                     user: User = Depends(require_roles(*PRODUCT_CONTRIBUTORS)), db: Session = Depends(get_db)):
-    p = _get_product_or_404(db, product_id)
-    row = db.get(ProductDocument, document_id)
-    if not row or row.product_id != p.id:
-        raise HTTPException(status_code=404, detail="Document not found.")
-    db.delete(row)
-    record_audit(db, actor_id=user.id, action="product.document.remove", entity_type="product", entity_id=p.id, summary=f"Document removed from {p.name}")
     db.commit()
     return {"ok": True}

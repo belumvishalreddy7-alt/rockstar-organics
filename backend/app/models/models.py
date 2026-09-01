@@ -251,10 +251,9 @@ class Product(Base):
     expiry_date: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
     precautions: Mapped[str | None] = mapped_column(Text, nullable=True)
     regulatory_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # Structured composition fields, added 2026-08-28 alongside the
-    # pack_sizes/crops/claims/certifications/documents child tables below -
-    # every one of these is entered by staff from verified source material,
-    # never auto-generated; a blank value means "information pending
+    # Structured composition fields, added 2026-08-28 - every one of these
+    # is entered by staff from verified source material, never
+    # auto-generated; a blank value means "information pending
     # verification", not "assume none".
     active_ingredients: Mapped[str | None] = mapped_column(Text, nullable=True)
     nutrient_content: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -295,103 +294,6 @@ class ProductImage(Base):
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
     product: Mapped["Product"] = relationship(back_populates="images")
-
-
-class ProductPackSize(Base):
-    """A single sellable pack-size record for a product (e.g. "500 g bottle").
-    Purely structured data entered by staff/dealer from real packaging -
-    never inferred or auto-generated."""
-    __tablename__ = "product_pack_sizes"
-
-    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
-    product_id: Mapped[str] = mapped_column(String(32), ForeignKey("products.id"), nullable=False)
-    quantity: Mapped[str] = mapped_column(String(30), nullable=False)
-    unit: Mapped[str] = mapped_column(String(20), nullable=False)
-    packaging_type: Mapped[str | None] = mapped_column(String(60), nullable=True)
-    sku: Mapped[str | None] = mapped_column(String(60), nullable=True)
-    # The rate for this specific pack size (e.g. a 500 ml bottle prices
-    # differently from a 1 L one) - never a single product-wide price,
-    # since real agri-input pricing varies by pack size. INR, staff-entered.
-    price: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
-    availability_status: Mapped[str] = mapped_column(String(20), default="available")  # available|out_of_stock|discontinued
-    sort_order: Mapped[int] = mapped_column(Integer, default=0)
-
-
-class ProductCrop(Base):
-    """A verified crop association for a product - replaces free-text
-    guessing with one structured record per crop, so a product can list
-    several approved crops instead of one comma-separated string."""
-    __tablename__ = "product_crops"
-
-    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
-    product_id: Mapped[str] = mapped_column(String(32), ForeignKey("products.id"), nullable=False)
-    crop_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    crop_category: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    target_use: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    application_stage: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    sort_order: Mapped[int] = mapped_column(Integer, default=0)
-
-
-class ProductClaim(Base):
-    """A single marketing/technical claim about a product, tracked with its
-    own evidence and verification so an unsupported claim can never reach
-    the public product page - see app/routers/products.py's claim
-    endpoints for the verify/approve gate."""
-    __tablename__ = "product_claims"
-
-    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
-    product_id: Mapped[str] = mapped_column(String(32), ForeignKey("products.id"), nullable=False)
-    claim_text: Mapped[str] = mapped_column(Text, nullable=False)
-    category: Mapped[str] = mapped_column(String(30), default="benefit")  # benefit|technical|crop|quality|certification
-    source_evidence: Mapped[str | None] = mapped_column(Text, nullable=True)
-    verification_status: Mapped[str] = mapped_column(String(20), default="pending")  # pending|verified|rejected
-    verified_by_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("users.id"), nullable=True)
-    verified_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
-
-
-class ProductCertification(Base):
-    """A verified third-party certification for a product. media_id (nullable)
-    points at the uploaded certificate file via the shared MediaRecord
-    storage, matching the pattern already used by CompanyDocument."""
-    __tablename__ = "product_certifications"
-
-    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
-    product_id: Mapped[str] = mapped_column(String(32), ForeignKey("products.id"), nullable=False)
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    issuing_organization: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    certificate_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    issue_date: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
-    expiry_date: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
-    media_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("media_records.id"), nullable=True)
-    verification_status: Mapped[str] = mapped_column(String(20), default="pending")  # pending|verified|rejected
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
-
-
-class ProductDocument(Base):
-    """A product-level document - technical data sheet, safety data sheet,
-    registration, brochure, or the official label/package artwork
-    (document_type="label"). Deliberately a separate table from
-    CompanyDocument (company-wide certificates) since these are scoped to
-    one product and carry their own version/expiry tracking."""
-    __tablename__ = "product_documents"
-
-    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
-    product_id: Mapped[str] = mapped_column(String(32), ForeignKey("products.id"), nullable=False)
-    document_type: Mapped[str] = mapped_column(String(30), nullable=False)
-    # technical_data_sheet|specification|safety_data_sheet|certificate|
-    # registration|label|brochure|catalogue|regulatory|other
-    title: Mapped[str] = mapped_column(String(255), nullable=False)
-    version: Mapped[str | None] = mapped_column(String(30), nullable=True)
-    issue_date: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
-    expiry_date: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
-    document_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    media_id: Mapped[str] = mapped_column(String(32), ForeignKey("media_records.id"), nullable=False)
-    uploaded_by_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("users.id"), nullable=True)
-    verification_status: Mapped[str] = mapped_column(String(20), default="pending")  # pending|verified|rejected
-    reviewed_by_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("users.id"), nullable=True)
-    reviewed_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
 
 
 class ProductReview(Base):
