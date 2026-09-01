@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../../api/client";
+import { useAuth } from "../../context/AuthContext";
 import { EmptyState } from "../../components/EmptyState";
 import { StatusBadge } from "../../components/StatusBadge";
 import { PhoneContact } from "../../components/PhoneContact";
@@ -8,6 +9,7 @@ import { PhoneContact } from "../../components/PhoneContact";
 interface AppRow { id: string; reference_number: string; business_name: string; territory: string; phone: string | null; status: string; created_at: string; }
 
 export function DistributorApplications() {
+  const { user } = useAuth();
   const qc = useQueryClient();
   const [credsMessage, setCredsMessage] = useState<string | null>(null);
   const { data, isLoading } = useQuery({ queryKey: ["distributor-applications"], queryFn: () => api.get<AppRow[]>("/distributors/applications") });
@@ -25,6 +27,11 @@ export function DistributorApplications() {
       }
       qc.invalidateQueries({ queryKey: ["distributor-applications"] });
     },
+  });
+
+  const removeApplication = useMutation({
+    mutationFn: (id: string) => api.del(`/distributors/applications/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["distributor-applications"] }),
   });
 
   if (isLoading) return <div className="loading-state">Loading applications...</div>;
@@ -50,6 +57,16 @@ export function DistributorApplications() {
                       <button className="btn btn-danger btn-sm" onClick={() => decide.mutate({ id: a.id, status: "rejected" })}>Reject</button>
                       <button className="btn btn-ghost btn-sm" onClick={() => decide.mutate({ id: a.id, status: "under_review" })}>Mark under review</button>
                     </>
+                  )}
+                  {user?.role === "super_admin" && (
+                    <button
+                      className="btn btn-danger btn-sm"
+                      onClick={() => {
+                        if (window.confirm(`Permanently delete this application from "${a.business_name}"? This cannot be undone.`)) removeApplication.mutate(a.id);
+                      }}
+                    >
+                      Delete
+                    </button>
                   )}
                 </td>
               </tr>

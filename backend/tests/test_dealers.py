@@ -65,3 +65,47 @@ def test_directory_respects_opt_in_and_suspension(client, approved_dealer):
 
     r = client.get("/api/v1/dealers/directory", params={"district": "Hyderabad"})
     assert not any(d["id"] == dealer_id for d in r.json())
+
+
+def test_delete_approved_application_does_not_break_the_dealer_profile(client, sales_manager, super_admin):
+    """An approved application has a DealerProfile pointing back at it
+    (application_id) - deleting the application must not leave that
+    foreign key dangling (or 500, like the same-shaped bug just fixed for
+    products), and the dealer's real account/profile must survive."""
+    r = client.post("/api/v1/dealers/apply", json={
+        "contact_person": "Del Test", "business_name": "Del Test Agro", "email": "deltest@example.com",
+        "phone": "9876543223", "district": "Hyderabad", "consent_given": True,
+    })
+    app_id = r.json()["id"]
+
+    _, sm_email, sm_password = sales_manager
+    client.post("/api/v1/auth/login", json={"email": sm_email, "password": sm_password})
+    approve = client.post(f"/api/v1/dealers/applications/{app_id}/status/approved", json={})
+    assert approve.status_code == 200, approve.text
+    client.post("/api/v1/auth/logout")
+
+    # a non-super_admin can't delete the application
+    client.post("/api/v1/auth/login", json={"email": sm_email, "password": sm_password})
+    assert client.delete(f"/api/v1/dealers/applications/{app_id}").status_code == 403
+    client.post("/api/v1/auth/logout")
+
+    _, admin_email, admin_password = super_admin
+    client.post("/api/v1/auth/login", json={"email": admin_email, "password": admin_password})
+    deleted = client.delete(f"/api/v1/dealers/applications/{app_id}")
+    assert deleted.status_code == 200, deleted.text
+    assert client.delete(f"/api/v1/dealers/applications/{app_id}").status_code == 404
+
+    client.post("/api/v1/auth/logout")
+
+    # deleting the application only removed the application record - the
+    # dealer's real account/profile (and its now-nulled application_id)
+    # must still exist
+    from app.core.database import SessionLocal
+    from app.models.models import DealerProfile, User
+    db = SessionLocal()
+    dealer_user = db.query(User).filter(User.email == "deltest@example.com").first()
+    assert dealer_user is not None
+    profile = db.query(DealerProfile).filter(DealerProfile.user_id == dealer_user.id).first()
+    assert profile is not None
+    assert profile.application_id is None
+    db.close()

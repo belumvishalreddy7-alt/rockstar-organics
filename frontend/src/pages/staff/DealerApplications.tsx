@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Fragment, useState } from "react";
 import { api } from "../../api/client";
+import { useAuth } from "../../context/AuthContext";
 import { EmptyState } from "../../components/EmptyState";
 import { StatusBadge } from "../../components/StatusBadge";
 import { PhoneContact } from "../../components/PhoneContact";
@@ -10,6 +11,7 @@ interface AppRow { id: string; reference_number: string; business_name: string; 
 interface DocRow { id: string; original_filename: string; created_at: string; }
 
 export function DealerApplications() {
+  const { user } = useAuth();
   const qc = useQueryClient();
   const [credsMessage, setCredsMessage] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -29,6 +31,11 @@ export function DealerApplications() {
       }
       qc.invalidateQueries({ queryKey: ["dealer-applications"] });
     },
+  });
+
+  const removeApplication = useMutation({
+    mutationFn: (id: string) => api.del(`/dealers/applications/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["dealer-applications"] }),
   });
 
   if (isLoading) return <div className="loading-state">Loading applications...</div>;
@@ -59,6 +66,16 @@ export function DealerApplications() {
                   <button className="btn btn-ghost btn-sm" onClick={() => setExpanded(expanded === a.id ? null : a.id)}>
                     {expanded === a.id ? "Hide documents" : "View documents"}
                   </button>
+                  {user?.role === "super_admin" && (
+                    <button
+                      className="btn btn-danger btn-sm"
+                      onClick={() => {
+                        if (window.confirm(`Permanently delete this application from "${a.business_name}"? This cannot be undone.`)) removeApplication.mutate(a.id);
+                      }}
+                    >
+                      Delete
+                    </button>
+                  )}
                 </td>
               </tr>
               {expanded === a.id && (

@@ -135,6 +135,22 @@ def change_application_status(application_id: str, new_status: str, payload: Dis
     return result
 
 
+@router.delete("/applications/{application_id}")
+def delete_application(application_id: str, user: User = Depends(require_roles("super_admin")), db: Session = Depends(get_db)):
+    a = db.get(DistributorApplication, application_id)
+    if not a:
+        raise HTTPException(status_code=404, detail="Application not found.")
+    # Same reasoning as dealers.py's delete_application - an approved
+    # application has a real DistributorProfile pointing back at it, so
+    # null that link first instead of leaving a dangling foreign key.
+    db.query(DistributorProfile).filter(DistributorProfile.application_id == a.id).update({"application_id": None})
+    record_audit(db, actor_id=user.id, action="distributor_application.delete", entity_type="distributor_application",
+                 entity_id=a.id, summary=f"Permanently deleted distributor application {a.reference_number}")
+    db.delete(a)
+    db.commit()
+    return {"ok": True}
+
+
 @router.get("/directory")
 def public_directory(territory: str | None = None, db: Session = Depends(get_db)):
     query = db.query(DistributorProfile).filter(DistributorProfile.directory_opt_in == True, DistributorProfile.suspended == False)  # noqa: E712

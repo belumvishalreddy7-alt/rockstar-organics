@@ -125,6 +125,24 @@ def change_application_status(application_id: str, new_status: str, payload: Dea
     return result
 
 
+@router.delete("/applications/{application_id}")
+def delete_application(application_id: str, user: User = Depends(require_roles("super_admin")), db: Session = Depends(get_db)):
+    a = db.get(DealerApplication, application_id)
+    if not a:
+        raise HTTPException(status_code=404, detail="Application not found.")
+    # An approved application has a real DealerProfile pointing back at it
+    # (application_id) - null that link first rather than leaving a
+    # dangling foreign key or 500ing on delete (the exact bug just fixed
+    # for products). The dealer's actual account/profile is untouched;
+    # only this application record is removed.
+    db.query(DealerProfile).filter(DealerProfile.application_id == a.id).update({"application_id": None})
+    record_audit(db, actor_id=user.id, action="dealer_application.delete", entity_type="dealer_application",
+                 entity_id=a.id, summary=f"Permanently deleted dealer application {a.reference_number}")
+    db.delete(a)
+    db.commit()
+    return {"ok": True}
+
+
 @router.get("/directory")
 def public_directory(district: str | None = None, mandal: str | None = None, product_id: str | None = None, db: Session = Depends(get_db)):
     query = db.query(DealerProfile).filter(DealerProfile.directory_opt_in == True, DealerProfile.suspended == False)  # noqa: E712

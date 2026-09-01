@@ -122,6 +122,42 @@ def test_distributor_application_rejects_invalid_status(client, sales_manager):
     assert r.status_code == 200
 
 
+def test_delete_approved_distributor_application_does_not_break_the_profile(client, sales_manager, super_admin):
+    email = _unique_email("del-distributor")
+    r = client.post("/api/v1/distributors/apply", json={
+        "contact_person": "Del Distributor", "business_name": "Del Distribution Co",
+        "email": email, "phone": "9876543213", "territory": "Del territory", "consent_given": True,
+    })
+    app_id = r.json()["id"]
+
+    _, sm_email, sm_password = sales_manager
+    client.post("/api/v1/auth/login", json={"email": sm_email, "password": sm_password})
+    approve = client.post(f"/api/v1/distributors/applications/{app_id}/status/approved", json={})
+    assert approve.status_code == 200, approve.text
+    client.post("/api/v1/auth/logout")
+
+    client.post("/api/v1/auth/login", json={"email": sm_email, "password": sm_password})
+    assert client.delete(f"/api/v1/distributors/applications/{app_id}").status_code == 403
+    client.post("/api/v1/auth/logout")
+
+    _, admin_email, admin_password = super_admin
+    client.post("/api/v1/auth/login", json={"email": admin_email, "password": admin_password})
+    deleted = client.delete(f"/api/v1/distributors/applications/{app_id}")
+    assert deleted.status_code == 200, deleted.text
+    assert client.delete(f"/api/v1/distributors/applications/{app_id}").status_code == 404
+    client.post("/api/v1/auth/logout")
+
+    from app.core.database import SessionLocal
+    from app.models.models import DistributorProfile, User
+    db = SessionLocal()
+    distributor_user = db.query(User).filter(User.email == email).first()
+    assert distributor_user is not None
+    profile = db.query(DistributorProfile).filter(DistributorProfile.user_id == distributor_user.id).first()
+    assert profile is not None
+    assert profile.application_id is None
+    db.close()
+
+
 def test_company_document_lifecycle(client, super_admin):
     uid, email, password = super_admin
     client.post("/api/v1/auth/login", json={"email": email, "password": password})
