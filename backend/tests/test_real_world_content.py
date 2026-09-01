@@ -101,6 +101,18 @@ def test_distributor_application_approval_creates_account(client, sales_manager)
     assert login.status_code == 200
     assert login.json()["role"] == "distributor"
     assert login.json()["must_change_password"] is True
+    distributor_user_id = login.json()["id"]
+    client.post("/api/v1/auth/logout")
+
+    # suspending the account also pulls it out of the public directory -
+    # the only way staff had to do this before now had no frontend page
+    # to reach it from at all
+    client.post("/api/v1/auth/login", json={"email": admin_email, "password": admin_password})
+    suspend = client.post(f"/api/v1/accounts/distributors/{distributor_user_id}/status/suspended")
+    assert suspend.status_code == 200
+    after_suspend = client.get("/api/v1/distributors/directory", params={"territory": "Ranga Reddy district"}).json()
+    assert not any(d["business_name"] == "Telangana Agri Distribution Co" for d in after_suspend)
+    client.post("/api/v1/auth/logout")
 
 
 def test_distributor_application_rejects_invalid_status(client, sales_manager):

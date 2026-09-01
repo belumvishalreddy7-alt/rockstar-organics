@@ -15,7 +15,7 @@ const INVITABLE_ROLES: { value: string; label: string }[] = [
   { value: "field_officer", label: "Field Officer" },
 ];
 
-function AccountTable({ kind }: { kind: "farmers" | "dealers" }) {
+function AccountTable({ kind }: { kind: "farmers" | "dealers" | "distributors" }) {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ["accounts", kind], queryFn: () => api.get<AccountRow[]>(`/accounts/${kind}`) });
 
@@ -149,22 +149,25 @@ function StaffPanel({ canCreateSuperAdmin }: { canCreateSuperAdmin: boolean }) {
 
 export function AccountManagement() {
   const { user } = useAuth();
-  const [tab, setTab] = useState<"farmers" | "dealers" | "staff">("farmers");
+  const [tab, setTab] = useState<"farmers" | "dealers" | "distributors" | "staff">("farmers");
   const isSuperAdminOrAdmin = user && ["super_admin", "admin"].includes(user.role);
 
   return (
     <div>
       <h2>Account management</h2>
-      <p className="small muted">Suspending a dealer account also removes them from the public directory and farmer-case matching immediately.</p>
+      <p className="small muted">Suspending a dealer or distributor account also removes them from their public directory immediately.</p>
       <div className="inline" style={{ marginBottom: 16 }}>
         {isSuperAdminOrAdmin && <button className={`btn btn-sm ${tab === "farmers" ? "btn-primary" : "btn-ghost"}`} onClick={() => setTab("farmers")}>Farmer accounts</button>}
         <button className={`btn btn-sm ${tab === "dealers" ? "btn-primary" : "btn-ghost"}`} onClick={() => setTab("dealers")}>Dealer accounts</button>
+        <button className={`btn btn-sm ${tab === "distributors" ? "btn-primary" : "btn-ghost"}`} onClick={() => setTab("distributors")}>Distributor accounts</button>
         {isSuperAdminOrAdmin && <button className={`btn btn-sm ${tab === "staff" ? "btn-primary" : "btn-ghost"}`} onClick={() => setTab("staff")}>Staff accounts</button>}
       </div>
       {tab === "staff" && isSuperAdminOrAdmin ? (
         <StaffPanel canCreateSuperAdmin={user?.role === "super_admin"} />
       ) : tab === "farmers" && isSuperAdminOrAdmin ? (
         <AccountTable kind="farmers" />
+      ) : tab === "distributors" ? (
+        <AccountTable kind="distributors" />
       ) : (
         <AccountTable kind="dealers" />
       )}
