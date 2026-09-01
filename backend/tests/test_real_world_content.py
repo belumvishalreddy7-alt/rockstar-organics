@@ -115,6 +115,59 @@ def test_distributor_application_approval_creates_account(client, sales_manager)
     client.post("/api/v1/auth/logout")
 
 
+def test_delete_distributor_removes_profile_disables_login_and_handles_stock(client, sales_manager, super_admin):
+    """Same coverage as the dealer equivalent: attaches a stock declaration
+    (distributor_stock.distributor_id has no ORM cascade) before deleting,
+    to confirm it's cleaned up rather than 500ing."""
+    email = _unique_email("del-distributor-stock")
+    r = client.post("/api/v1/distributors/apply", json={
+        "contact_person": "Del Stock Distributor", "business_name": "Del Stock Distribution Co",
+        "email": email, "phone": "9876543214", "territory": "Del stock territory", "consent_given": True,
+    })
+    app_id = r.json()["id"]
+
+    _, sm_email, sm_password = sales_manager
+    client.post("/api/v1/auth/login", json={"email": sm_email, "password": sm_password})
+    approve = client.post(f"/api/v1/distributors/applications/{app_id}/status/approved", json={})
+    assert approve.status_code == 200, approve.text
+    creds = approve.json()["distributor_credentials"]
+    client.post("/api/v1/auth/logout")
+
+    _, admin_email, admin_password = super_admin
+    client.post("/api/v1/auth/login", json={"email": admin_email, "password": admin_password})
+    product = client.post("/api/v1/products", json={"sku": "SKU-DSTDEL", "name": "Distributor Delete Product", "slug": "distributor-delete-product",
+                                                  "precautions": "x", "full_description": "x"})
+    pid = product.json()["id"]
+    cat = client.post("/api/v1/categories", json={"name": "Distributor Del Cat", "slug": "distributor-del-cat"})
+    client.put(f"/api/v1/products/{pid}", json={"sku": "SKU-DSTDEL", "name": "Distributor Delete Product", "slug": "distributor-delete-product",
+                                              "category_id": cat.json()["id"], "precautions": "x", "full_description": "x"})
+    client.post(f"/api/v1/products/{pid}/transition/in_review", json={})
+    client.post(f"/api/v1/products/{pid}/transition/approved", json={})
+    client.post(f"/api/v1/media/products/{pid}/images?alt_text=Front", files={"file": ("f.jpg", b"\xff\xd8\xff" + b"x" * 20, "image/jpeg")})
+    client.post(f"/api/v1/products/{pid}/transition/published", json={})
+    client.post("/api/v1/auth/logout")
+
+    login = client.post("/api/v1/auth/login", json={"email": email, "password": creds["temporary_password"]})
+    distributor_user_id = login.json()["id"]
+    stock = client.post(f"/api/v1/distributors/me/stock/{pid}/available")
+    assert stock.status_code == 200, stock.text
+    client.post("/api/v1/auth/logout")
+
+    client.post("/api/v1/auth/login", json={"email": sm_email, "password": sm_password})
+    forbidden = client.delete(f"/api/v1/accounts/distributors/{distributor_user_id}")
+    assert forbidden.status_code == 403
+    client.post("/api/v1/auth/logout")
+
+    client.post("/api/v1/auth/login", json={"email": admin_email, "password": admin_password})
+    deleted = client.delete(f"/api/v1/accounts/distributors/{distributor_user_id}")
+    assert deleted.status_code == 200, deleted.text
+    after = client.get("/api/v1/distributors/directory", params={"territory": "Del stock territory"}).json()
+    assert not any(d["business_name"] == "Del Stock Distribution Co" for d in after)
+    client.post("/api/v1/auth/logout")
+
+    assert client.post("/api/v1/auth/login", json={"email": email, "password": creds["temporary_password"]}).status_code == 401
+
+
 def test_distributor_application_rejects_invalid_status(client, sales_manager):
     uid, admin_email, admin_password = sales_manager
     client.post("/api/v1/auth/login", json={"email": admin_email, "password": admin_password})

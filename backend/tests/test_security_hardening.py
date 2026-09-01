@@ -99,6 +99,64 @@ def test_suspending_dealer_account_also_hides_from_directory(client, approved_de
     assert not any(d["id"] == dealer_id for d in client.get("/api/v1/dealers/directory", params={"district": "Hyderabad"}).json())
 
 
+def test_delete_dealer_removes_profile_disables_login_and_handles_dependents(client, approved_dealer, super_admin, sales_manager):
+    """Suspend is reversible and keeps the profile; Delete is the real
+    "make them gone" action. Attaches a farmer case assignment and a
+    product-availability declaration first - both reference
+    dealer_profiles.id with no ORM cascade, the exact shape of bug that
+    made whole-product delete 500 earlier - to confirm delete_dealer
+    actually cleans those up instead of hitting the same wall."""
+    uid, dealer_email, dealer_password, dealer_id = approved_dealer
+    _, admin_email, admin_password = super_admin
+
+    _login = lambda email, password: client.post("/api/v1/auth/login", json={"email": email, "password": password})
+    assert _login(admin_email, admin_password).status_code == 200
+    product = client.post("/api/v1/products", json={"sku": "SKU-DLRDEL", "name": "Dealer Delete Product", "slug": "dealer-delete-product",
+                                                  "precautions": "x", "full_description": "x"})
+    pid = product.json()["id"]
+    cat = client.post("/api/v1/categories", json={"name": "Dealer Del Cat", "slug": "dealer-del-cat"})
+    client.put(f"/api/v1/products/{pid}", json={"sku": "SKU-DLRDEL", "name": "Dealer Delete Product", "slug": "dealer-delete-product",
+                                              "category_id": cat.json()["id"], "precautions": "x", "full_description": "x"})
+    client.post(f"/api/v1/products/{pid}/transition/in_review", json={})
+    client.post(f"/api/v1/products/{pid}/transition/approved", json={})
+    client.post(f"/api/v1/media/products/{pid}/images?alt_text=Front", files={"file": ("f.jpg", b"\xff\xd8\xff" + b"x" * 20, "image/jpeg")})
+    client.post(f"/api/v1/products/{pid}/transition/published", json={})
+
+    farmer_email = "dealerdelfarmer@example.com"
+    client.post("/api/v1/auth/register", json={"full_name": "Case Farmer", "email": farmer_email, "phone": "9876543245", "password": "Passw0rd123"})
+    case = client.post("/api/v1/cases", json={"title": "Need help", "description": "D", "district": "Hyderabad"})
+    case_id = case.json()["id"]
+    client.post("/api/v1/auth/logout")
+
+    assert _login(admin_email, admin_password).status_code == 200
+    assign = client.post(f"/api/v1/cases/{case_id}/assign", json={"dealer_id": dealer_id})
+    assert assign.status_code == 200, assign.text
+    client.post("/api/v1/auth/logout")
+
+    assert _login(dealer_email, dealer_password).status_code == 200
+    avail = client.post(f"/api/v1/dealers/me/availability/{pid}/available")
+    assert avail.status_code == 200, avail.text
+    client.post("/api/v1/auth/logout")
+
+    _, sm_email, sm_password = sales_manager
+    assert _login(sm_email, sm_password).status_code == 200
+    forbidden = client.delete(f"/api/v1/accounts/dealers/{uid}")
+    assert forbidden.status_code == 403  # DEALER_MANAGERS includes sales_manager, but delete is owner-only
+    client.post("/api/v1/auth/logout")
+
+    assert _login(admin_email, admin_password).status_code == 200
+    deleted = client.delete(f"/api/v1/accounts/dealers/{uid}")
+    assert deleted.status_code == 200, deleted.text
+
+    assert not any(d["id"] == dealer_id for d in client.get("/api/v1/dealers/directory", params={"district": "Hyderabad"}).json())
+    farmer_accounts = client.get("/api/v1/accounts/dealers").json()
+    target = next((d for d in farmer_accounts if d["id"] == uid), None)
+    assert target is not None and target["status"] == "disabled"
+    client.post("/api/v1/auth/logout")
+
+    assert client.post("/api/v1/auth/login", json={"email": dealer_email, "password": dealer_password}).status_code == 401
+
+
 def test_review_comment_length_is_capped(client, super_admin):
     _, email, password = super_admin
     _login(client, email, password)

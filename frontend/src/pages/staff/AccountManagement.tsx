@@ -16,6 +16,7 @@ const INVITABLE_ROLES: { value: string; label: string }[] = [
 ];
 
 function AccountTable({ kind }: { kind: "farmers" | "dealers" | "distributors" }) {
+  const { user } = useAuth();
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ["accounts", kind], queryFn: () => api.get<AccountRow[]>(`/accounts/${kind}`) });
 
@@ -24,8 +25,20 @@ function AccountTable({ kind }: { kind: "farmers" | "dealers" | "distributors" }
     onSuccess: () => qc.invalidateQueries({ queryKey: ["accounts", kind] }),
   });
 
+  const removeAccount = useMutation({
+    mutationFn: (id: string) => api.del(`/accounts/${kind}/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["accounts", kind] }),
+  });
+
   if (isLoading) return <div className="loading-state">Loading accounts...</div>;
   if (!data || data.length === 0) return <EmptyState title={`No ${kind} accounts yet.`} />;
+
+  // Suspend already removes a dealer/distributor from their public
+  // directory immediately (reversible). Delete goes further: it
+  // permanently removes their business profile, not just their ability
+  // to log in - only the owner can do that, and only for these two kinds
+  // (there's no equivalent profile to delete for a farmer account).
+  const canDelete = user?.role === "super_admin" && kind !== "farmers";
 
   return (
     <div className="table-scroll">
@@ -39,6 +52,16 @@ function AccountTable({ kind }: { kind: "farmers" | "dealers" | "distributors" }
                 {a.status !== "active" && <button className="btn btn-ghost btn-sm" onClick={() => changeStatus.mutate({ id: a.id, status: "active" })}>Reactivate</button>}
                 {a.status !== "suspended" && <button className="btn btn-danger btn-sm" onClick={() => changeStatus.mutate({ id: a.id, status: "suspended" })}>Suspend</button>}
                 {a.status !== "disabled" && <button className="btn btn-ghost btn-sm" onClick={() => changeStatus.mutate({ id: a.id, status: "disabled" })}>Disable</button>}
+                {canDelete && (
+                  <button
+                    className="btn btn-danger btn-sm"
+                    onClick={() => {
+                      if (window.confirm(`Permanently delete ${a.full_name}'s business profile? Their login is disabled too. This cannot be undone.`)) removeAccount.mutate(a.id);
+                    }}
+                  >
+                    Delete
+                  </button>
+                )}
               </td>
             </tr>
           ))}

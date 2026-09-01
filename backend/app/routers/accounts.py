@@ -15,7 +15,7 @@ from app.core.audit import record_audit
 from app.core.database import get_db
 from app.core.deps import require_roles
 from app.core.permissions import DEALER_MANAGERS, DISTRIBUTOR_MANAGERS, ROLE_ADMIN, ROLE_DEALER, ROLE_DISTRIBUTOR, ROLE_FARMER, ROLE_SUPER_ADMIN
-from app.models.models import DealerProfile, DistributorProfile, User
+from app.models.models import DealerProductAvailability, DealerProfile, DistributorProfile, DistributorStock, FarmerSupportCase, User
 
 router = APIRouter(prefix="/api/v1/accounts", tags=["accounts"])
 
@@ -75,6 +75,31 @@ def change_dealer_status(user_id: str, new_status: str, user: User = Depends(req
     return {"ok": True}
 
 
+@router.delete("/dealers/{user_id}")
+def delete_dealer(user_id: str, user: User = Depends(require_roles(ROLE_SUPER_ADMIN)), db: Session = Depends(get_db)):
+    """Permanently removes the dealer's business profile - this is the
+    genuine "make them stop appearing everywhere" action, distinct from
+    Suspend (reversible, keeps the profile). The login account itself is
+    disabled rather than deleted: dozens of tables reference users.id for
+    audit/attribution (created_by_id, actor_id, etc.), and hard-deleting
+    the row would either violate one of those foreign keys or silently
+    erase that history - disabling achieves the same "can never log in
+    again" outcome without either problem."""
+    target = db.get(User, user_id)
+    if not target or target.role != ROLE_DEALER:
+        raise HTTPException(status_code=404, detail="Dealer account not found.")
+    profile = db.query(DealerProfile).filter(DealerProfile.user_id == target.id).first()
+    if profile:
+        db.query(FarmerSupportCase).filter(FarmerSupportCase.assigned_dealer_id == profile.id).update({"assigned_dealer_id": None})
+        db.query(DealerProductAvailability).filter(DealerProductAvailability.dealer_id == profile.id).delete()
+        db.delete(profile)  # service_areas cascade via the ORM relationship
+    target.status = "disabled"
+    record_audit(db, actor_id=user.id, action="dealer.delete", entity_type="user", entity_id=target.id,
+                 summary=f"Permanently deleted dealer profile and disabled account: {target.email}")
+    db.commit()
+    return {"ok": True}
+
+
 @router.get("/distributors")
 def list_distributor_accounts(status: str | None = None, user: User = Depends(require_roles(*DISTRIBUTOR_MANAGERS)), db: Session = Depends(get_db)):
     query = db.query(User).filter(User.role == ROLE_DISTRIBUTOR)
@@ -97,5 +122,23 @@ def change_distributor_status(user_id: str, new_status: str, user: User = Depend
         profile.suspended = new_status != "active"
     record_audit(db, actor_id=user.id, action="distributor.status_change", entity_type="user", entity_id=target.id,
                  summary=f"Distributor account {target.email} -> {new_status}")
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/distributors/{user_id}")
+def delete_distributor(user_id: str, user: User = Depends(require_roles(ROLE_SUPER_ADMIN)), db: Session = Depends(get_db)):
+    """Same reasoning as delete_dealer above - permanently removes the
+    business profile, disables (doesn't delete) the login account."""
+    target = db.get(User, user_id)
+    if not target or target.role != ROLE_DISTRIBUTOR:
+        raise HTTPException(status_code=404, detail="Distributor account not found.")
+    profile = db.query(DistributorProfile).filter(DistributorProfile.user_id == target.id).first()
+    if profile:
+        db.query(DistributorStock).filter(DistributorStock.distributor_id == profile.id).delete()
+        db.delete(profile)
+    target.status = "disabled"
+    record_audit(db, actor_id=user.id, action="distributor.delete", entity_type="user", entity_id=target.id,
+                 summary=f"Permanently deleted distributor profile and disabled account: {target.email}")
     db.commit()
     return {"ok": True}
