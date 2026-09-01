@@ -18,6 +18,18 @@ interface ProductRow {
 
 interface Category { id: string; name: string; slug: string; }
 
+/** Mirrors the backend's publish gate in routers/products.py exactly, so
+ * "why won't this publish" is answered on screen instead of only after a
+ * failed click parses an error message. */
+function missingPublishFields(p: ProductRow): string[] {
+  const missing: string[] = [];
+  if (!p.category_id) missing.push("category");
+  if (!p.full_description) missing.push("full description");
+  if (!p.precautions) missing.push("precautions");
+  if (p.images.length === 0) missing.push("at least one product image");
+  return missing;
+}
+
 type ProductFieldValues = {
   sku: string; name: string; slug: string; category_id: string; short_description: string; full_description: string;
   precautions: string; benefits: string; recommended_crops: string; application_method: string;
@@ -277,9 +289,19 @@ export function ProductManagement() {
         <table className="data-table">
           <thead><tr><th>SKU</th><th>Name</th><th>Status</th><th>Actions</th></tr></thead>
           <tbody>
-            {data?.items.map((p) => (
+            {data?.items.map((p) => {
+              const missing = p.status === "approved" ? missingPublishFields(p) : [];
+              return (
               <tr key={p.id}>
-                <td>{p.sku}</td><td>{p.name}</td><td><StatusBadge status={p.status} /></td>
+                <td>{p.sku}</td><td>{p.name}</td>
+                <td>
+                  <StatusBadge status={p.status} />
+                  {missing.length > 0 && (
+                    <p className="small" style={{ color: "var(--color-danger)", margin: "4px 0 0" }}>
+                      Won't publish yet - missing: {missing.join(", ")}.
+                    </p>
+                  )}
+                </td>
                 <td className="inline">
                   {(TRANSITIONS[p.status] || []).map((next) => (
                     <button key={next} className="btn btn-ghost btn-sm" onClick={() => transition.mutate({ id: p.id, status: next })}>
@@ -308,7 +330,8 @@ export function ProductManagement() {
                   )}
                 </td>
               </tr>
-            ))}
+              );
+            })}
             {data?.items.filter((p) => p.id === expandedId).map((p) => (
               <tr key={`${p.id}-detail`}>
                 <td colSpan={4}>
