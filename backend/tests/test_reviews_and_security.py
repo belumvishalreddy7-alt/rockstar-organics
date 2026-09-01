@@ -48,6 +48,22 @@ def test_review_hidden_until_moderated(client, super_admin):
     assert detail["reviews"] == []
 
 
+def test_review_submission_notifies_the_owner(client, super_admin):
+    """The owner shouldn't have to remember to check Product reviews -
+    submitting one should land directly in their own notifications."""
+    pid = _publish_product(client, super_admin, sku="SKU-REVNOTIFY", slug="rev-product-notify")
+    _register_farmer(client)
+    r = client.post(f"/api/v1/reviews/products/{pid}", json={"rating": 4, "comment": "Solid product"})
+    assert r.status_code == 200
+    client.post("/api/v1/auth/logout")
+
+    _, admin_email, admin_password = super_admin
+    _login(client, admin_email, admin_password)
+    notifications = client.get("/api/v1/notifications").json()
+    assert any(n["type"] == "review_submitted" and "Solid" not in n["message"] and "4/5" in n["message"] for n in notifications)
+    client.post("/api/v1/auth/logout")
+
+
 def test_anonymous_and_non_farmer_cannot_submit_review(client, super_admin, approved_dealer):
     pid = _publish_product(client, super_admin, sku="SKU-REVAUTH", slug="rev-product-auth")
 

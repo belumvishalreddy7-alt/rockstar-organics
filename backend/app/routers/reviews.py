@@ -7,7 +7,8 @@ from app.core.audit import record_audit
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.deps import require_roles
-from app.core.permissions import REVIEW_MODERATORS, ROLE_FARMER
+from app.core.notify import notify
+from app.core.permissions import REVIEW_MODERATORS, ROLE_FARMER, ROLE_SUPER_ADMIN
 from app.core.rate_limit import rate_limiter
 from app.models.models import Product, ProductReview, User
 from app.schemas.schemas import ReviewCreate, ReviewModeration
@@ -42,6 +43,19 @@ def submit_review(product_id: str, payload: ReviewCreate, request: Request,
     db.flush()
     record_audit(db, actor_id=user.id, action="review.submit", entity_type="product_review", entity_id=review.id,
                  summary=f"Review submitted for product {product.name}")
+
+    # Owner gets a direct notification rather than having to remember to
+    # check Product reviews - same "notify every owner" pattern used for
+    # farmer/dealer/distributor login (see auth.py's _notify_owner_of_login).
+    owners = db.query(User).filter(User.role == ROLE_SUPER_ADMIN).all()
+    for owner in owners:
+        notify(
+            db, recipient_id=owner.id, type="review_submitted",
+            title="New product review awaiting moderation",
+            message=f"{user.full_name} rated {product.name} {payload.rating}/5.",
+            related_entity_type="product_review", related_entity_id=review.id,
+        )
+
     db.commit()
     return {"ok": True, "status": "pending"}
 
