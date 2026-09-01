@@ -14,6 +14,7 @@ export function AnnouncementManagement() {
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   const [form, setForm] = useState({ title: "", slug: "", summary: "", body: "", announcement_type: "general" });
 
   const { data, isLoading } = useQuery({ queryKey: ["admin-announcements"], queryFn: () => api.get<Row[]>("/announcements") });
@@ -29,8 +30,20 @@ export function AnnouncementManagement() {
   });
 
   const transition = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) => api.post(`/announcements/${id}/transition/${status}`, {}),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-announcements"] }),
+    mutationFn: ({ id, status }: { id: string; status: string }) => api.post<{ email_stats?: { recipients: number; sent: number; failed: number } }>(`/announcements/${id}/transition/${status}`, {}),
+    onSuccess: (r) => {
+      if (r.email_stats) {
+        const { recipients, sent, failed } = r.email_stats;
+        setMessage(
+          recipients === 0
+            ? "Published. No dealer, distributor, or staff accounts to email yet."
+            : failed > 0
+              ? `Published and emailed ${sent}/${recipients} recipients (${failed} failed - check the email provider is configured).`
+              : `Published and emailed ${sent} dealer/distributor/staff recipients.`
+        );
+      }
+      qc.invalidateQueries({ queryKey: ["admin-announcements"] });
+    },
   });
 
   return (
@@ -40,6 +53,7 @@ export function AnnouncementManagement() {
         <button className="btn btn-primary btn-sm" onClick={() => setShowForm((s) => !s)}>{showForm ? "Cancel" : "New announcement"}</button>
       </div>
       {error && <div className="alert alert-error">{error}</div>}
+      {message && <div className="alert alert-success">{message}</div>}
       {showForm && (
         <div className="panel">
           <form onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>

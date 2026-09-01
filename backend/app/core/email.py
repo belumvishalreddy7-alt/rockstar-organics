@@ -127,3 +127,16 @@ def application_approved_email(contact_person: str, business_name: str, login_em
         "You will be asked to set a new password on first sign-in."
     )
     return html, text
+
+
+def announcement_email(title: str, summary: str | None, slug: str) -> tuple[str, str]:
+    url = f"{settings.PUBLIC_APP_URL}/announcements/{slug}"
+    html = f"""
+    <div style="font-family: -apple-system, Segoe UI, Roboto, sans-serif; max-width: 480px; margin: 0 auto;">
+      <h2 style="color: #2f5d34;">{title}</h2>
+      {f'<p>{summary}</p>' if summary else ''}
+      <p><a href="{url}">Read the full announcement</a></p>
+    </div>
+    """
+    text = f"{title}\n\n{summary + chr(10) + chr(10) if summary else ''}Read the full announcement: {url}"
+    return html, text

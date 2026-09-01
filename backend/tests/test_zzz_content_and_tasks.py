@@ -16,12 +16,32 @@ def test_announcement_lifecycle_and_visibility(client, super_admin):
     assert client.get("/api/v1/announcements/public/monsoon-advisory").status_code == 404  # draft not public
 
     client.post(f"/api/v1/announcements/{aid}/transition/in_review", json={})
-    client.post(f"/api/v1/announcements/{aid}/transition/published", json={})
+    publish = client.post(f"/api/v1/announcements/{aid}/transition/published", json={})
+    # publishing is the "tell everyone" moment - dealers/distributors/staff
+    # get emailed directly, and the response says so rather than silently
+    # claiming success either way
+    stats = publish.json()["email_stats"]
+    assert stats["recipients"] >= 1  # at least the publishing super_admin, who is staff
+    assert stats["sent"] + stats["failed"] == stats["recipients"]
     r = client.get("/api/v1/announcements/public/monsoon-advisory")
     assert r.status_code == 200
 
     client.post(f"/api/v1/announcements/{aid}/transition/archived", json={})
     assert client.get("/api/v1/announcements/public/monsoon-advisory").status_code == 404
+
+
+def test_publishing_announcement_emails_dealers_and_distributors_too(client, super_admin, approved_dealer):
+    """approved_dealer creates a real active dealer account (bypassing the
+    application flow) - the recipient count must include it alongside the
+    publishing super_admin, confirming dealers aren't left out of the
+    role filter."""
+    _, email, password = super_admin
+    _login(client, email, password)
+    r = client.post("/api/v1/announcements", json={"title": "New product line", "slug": "new-product-line", "body": "Details."})
+    aid = r.json()["id"]
+    client.post(f"/api/v1/announcements/{aid}/transition/in_review", json={})
+    published = client.post(f"/api/v1/announcements/{aid}/transition/published", json={})
+    assert published.json()["email_stats"]["recipients"] >= 2  # the super_admin + the approved dealer
 
 
 def test_knowledge_article_requires_review_before_publish(client, super_admin):

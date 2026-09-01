@@ -6,7 +6,8 @@ from sqlalchemy.orm import Session
 from app.core.audit import record_audit
 from app.core.database import get_db
 from app.core.deps import require_roles
-from app.core.permissions import PRODUCT_MANAGERS
+from app.core.email import announcement_email, send_email
+from app.core.permissions import PRODUCT_MANAGERS, ROLE_DEALER, ROLE_DISTRIBUTOR, STAFF_ROLES
 from app.models.models import Announcement, User
 from app.schemas.schemas import AnnouncementCreate
 
@@ -77,12 +78,33 @@ def transition_announcement(announcement_id: str, new_status: str,
     allowed = VALID_TRANSITIONS.get(a.status, set())
     if new_status not in allowed:
         raise HTTPException(status_code=400, detail=f"Cannot move announcement from '{a.status}' to '{new_status}'.")
+    email_stats = None
     if new_status == "published":
         a.publish_date = dt.datetime.utcnow()
+        # Publishing is the actual "tell everyone" moment - dealers,
+        # distributors, and staff all get it directly by email rather than
+        # needing to notice it on the site themselves.
+        recipients = db.query(User).filter(
+            User.role.in_([ROLE_DEALER, ROLE_DISTRIBUTOR, *STAFF_ROLES]),
+            User.status == "active",
+        ).all()
+        html, text = announcement_email(a.title, a.summary, a.slug)
+        sent, failed = 0, 0
+        for recipient in recipients:
+            result = send_email(to=recipient.email, subject=f"Rockstar Organics: {a.title}", html=html, text=text)
+            if result.sent:
+                sent += 1
+            else:
+                failed += 1
+        email_stats = {"recipients": len(recipients), "sent": sent, "failed": failed}
     old = a.status
     a.status = new_status
     record_audit(db, actor_id=user.id, action=f"announcement.{new_status}", entity_type="announcement", entity_id=a.id,
-                 summary=f"Announcement {a.title} moved from {old} to {new_status}")
+                 summary=f"Announcement {a.title} moved from {old} to {new_status}"
+                         + (f" - emailed {email_stats['sent']}/{email_stats['recipients']} recipients" if email_stats else ""))
     db.commit()
     db.refresh(a)
-    return _serialize(a)
+    result = _serialize(a)
+    if email_stats:
+        result["email_stats"] = email_stats
+    return result
