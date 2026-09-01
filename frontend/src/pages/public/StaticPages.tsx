@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { api, ApiError } from "../../api/client";
-import { LocationMap } from "../../components/LocationMap";
 
 export function About() {
   const settings = useQuery({ queryKey: ["public-settings"], queryFn: () => api.get<Record<string, string | null>>("/settings/public") });
@@ -125,13 +124,7 @@ export function Contact() {
           <h2>Farmer platform support</h2>
           <p className="small muted">Authenticated farmers can create support cases through the farmer portal.</p>
           <h2>Service region</h2>
-          <p className="small muted">A precise address is pending verification. The map below marks our confirmed service region.</p>
-          <LocationMap
-            locations={[]}
-            fallbackQuery="Ranga Reddy district, Telangana, India"
-            fallbackLabel="Rockstar Organics service region"
-            height={220}
-          />
+          <p className="small muted">Ranga Reddy district, Telangana, India. A precise address is pending verification.</p>
         </div>
         <div className="panel">
           <h2>Send an enquiry</h2>
