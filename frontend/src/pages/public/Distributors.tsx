@@ -1,11 +1,16 @@
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { api, ApiError } from "../../api/client";
-import { LocationMap } from "../../components/LocationMap";
+import { EmptyState } from "../../components/EmptyState";
 
 interface FormState {
   contact_person: string; business_name: string; email: string; phone: string; territory: string;
   years_in_business: string; warehouse_capacity_notes: string; notes: string; consent_given: boolean;
+}
+
+interface DistributorEntry {
+  id: string; business_name: string; territory: string;
+  public_phone: string | null; public_email: string | null; last_activity_at: string | null;
 }
 
 const initial: FormState = {
@@ -17,6 +22,10 @@ export function Distributors() {
   const [form, setForm] = useState<FormState>(initial);
   const [error, setError] = useState<string | null>(null);
   const [reference, setReference] = useState<string | null>(null);
+  const { data, isLoading } = useQuery({
+    queryKey: ["distributor-directory"],
+    queryFn: () => api.get<DistributorEntry[]>("/distributors/directory"),
+  });
 
   const submit = useMutation({
     mutationFn: () =>
@@ -36,15 +45,26 @@ export function Distributors() {
       <h1>Distributors</h1>
       <div className="panel" style={{ marginBottom: 16 }}>
         <h2>Distribution network</h2>
-        <p className="small muted">
-          There is no public distributor directory yet, so individual distributor locations are not shown here.
-          The map below marks our confirmed service region.
-        </p>
-        <LocationMap
-          locations={[]}
-          fallbackQuery="Ranga Reddy district, Telangana, India"
-          fallbackLabel="Rockstar Organics service region"
-        />
+        <p className="small muted">Only active, approved distributors who have opted into the public directory are listed here.</p>
+        {isLoading && <div className="loading-state">Loading distributors...</div>}
+        {data && data.length === 0 && (
+          <EmptyState title="No participating distributors found yet.">
+            <p className="small">Check back later as more distributors join the network.</p>
+          </EmptyState>
+        )}
+        {data && data.length > 0 && (
+          <div className="grid cols-2">
+            {data.map((d) => (
+              <div className="panel" key={d.id}>
+                <h3>{d.business_name}</h3>
+                <p className="small muted">Territory: {d.territory}</p>
+                {d.public_phone && <p className="small">Phone: {d.public_phone}</p>}
+                {d.public_email && <p className="small">Email: {d.public_email}</p>}
+                {d.last_activity_at && <p className="small muted">Last confirmed activity: {new Date(d.last_activity_at).toLocaleDateString()}</p>}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
       <div className="grid cols-2">
         <div className="panel">

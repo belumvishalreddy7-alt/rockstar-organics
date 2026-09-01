@@ -108,8 +108,14 @@ def change_application_status(application_id: str, new_status: str, payload: Dis
                                  full_name=a.contact_person, phone=a.phone, status="active", must_change_password=True)
         db.add(distributor_user)
         db.flush()
+        # Same reasoning as the dealer approval flow (see dealers.py): the
+        # owner approving IS the "make this findable" decision, so opted
+        # into the public directory by default rather than requiring a
+        # separate self-service step - a distributor can still opt back out
+        # via PUT /distributors/me/profile.
         profile = DistributorProfile(user_id=distributor_user.id, application_id=a.id, business_name=a.business_name,
-                                      territory=a.territory, public_phone=a.phone, public_email=a.email, address=a.address)
+                                      territory=a.territory, public_phone=a.phone, public_email=a.email, address=a.address,
+                                      directory_opt_in=True, show_public_phone=True, show_public_email=True)
         db.add(profile)
         notify(db, recipient_id=distributor_user.id, type="distributor_application_approved", title="Application approved",
                message="Your distributor application has been approved. Sign in and change your temporary password.")
@@ -129,6 +135,22 @@ def change_application_status(application_id: str, new_status: str, payload: Dis
     return result
 
 
+@router.get("/directory")
+def public_directory(territory: str | None = None, db: Session = Depends(get_db)):
+    query = db.query(DistributorProfile).filter(DistributorProfile.directory_opt_in == True, DistributorProfile.suspended == False)  # noqa: E712
+    if territory:
+        query = query.filter(DistributorProfile.territory == territory)
+    return [
+        {
+            "id": d.id, "business_name": d.business_name, "territory": d.territory,
+            "public_phone": d.public_phone if d.show_public_phone else None,
+            "public_email": d.public_email if d.show_public_email else None,
+            "last_activity_at": d.last_activity_at.isoformat() if d.last_activity_at else None,
+        }
+        for d in query.all()
+    ]
+
+
 @router.get("/me/profile")
 def my_profile(user: User = Depends(require_roles(ROLE_DISTRIBUTOR)), db: Session = Depends(get_db)):
     profile = db.query(DistributorProfile).filter(DistributorProfile.user_id == user.id).first()
@@ -137,7 +159,8 @@ def my_profile(user: User = Depends(require_roles(ROLE_DISTRIBUTOR)), db: Sessio
     return {
         "id": profile.id, "business_name": profile.business_name, "territory": profile.territory,
         "public_phone": profile.public_phone, "public_email": profile.public_email, "address": profile.address,
-        "suspended": profile.suspended,
+        "directory_opt_in": profile.directory_opt_in, "show_public_phone": profile.show_public_phone,
+        "show_public_email": profile.show_public_email, "suspended": profile.suspended,
     }
 
 

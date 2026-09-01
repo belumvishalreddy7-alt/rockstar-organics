@@ -649,6 +649,9 @@ class DealerProfileUpdate(BaseModel):
 
 class DistributorProfileUpdate(BaseModel):
     territory: str | None = Field(default=None, min_length=1, max_length=255)
+    directory_opt_in: bool | None = None
+    show_public_phone: bool | None = None
+    show_public_email: bool | None = None
     public_phone: str | None = Field(default=None, max_length=20)
     public_email: EmailStr | None = None
     address: str | None = Field(default=None, max_length=2000)

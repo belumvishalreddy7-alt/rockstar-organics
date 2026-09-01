@@ -21,6 +21,11 @@ def test_dealer_application_and_approval_creates_user(client, sales_manager):
     creds = r.json()["dealer_credentials"]
     assert creds["email"] == "anilagro@example.com"
 
+    # approval alone (no separate opt-in step) makes the dealer findable by
+    # farmers in the public directory
+    directory = client.get("/api/v1/dealers/directory", params={"district": "Ranga Reddy"}).json()
+    assert any(d["business_name"] == "Anil Agro Store" and d["public_phone"] == "9876543220" for d in directory)
+
     # new dealer can log in with temp password and must change it
     client.post("/api/v1/auth/logout")
     r = client.post("/api/v1/auth/login", json={"email": creds["email"], "password": creds["temporary_password"]})

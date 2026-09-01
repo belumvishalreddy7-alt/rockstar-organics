@@ -91,6 +91,11 @@ def test_distributor_application_approval_creates_account(client, sales_manager)
     # rather than silently pretending delivery happened.
     assert "email_delivery" in creds
 
+    # approval alone (no separate opt-in step) makes the distributor
+    # findable by farmers in the public directory
+    directory = client.get("/api/v1/distributors/directory", params={"territory": "Ranga Reddy district"}).json()
+    assert any(d["business_name"] == "Telangana Agri Distribution Co" and d["public_phone"] == "9876543212" for d in directory)
+
     client.post("/api/v1/auth/logout")
     login = client.post("/api/v1/auth/login", json={"email": email, "password": creds["temporary_password"]})
     assert login.status_code == 200

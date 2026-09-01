@@ -95,8 +95,15 @@ def change_application_status(application_id: str, new_status: str, payload: Dea
                             full_name=a.contact_person, phone=a.phone, status="active", must_change_password=True)
         db.add(dealer_user)
         db.flush()
+        # Owner approval is the actual, explicit "farmers should be able to
+        # find this dealer" decision for this business - opted in and both
+        # contact fields shown by default, rather than requiring the dealer
+        # to separately discover and flip a setting after already being
+        # approved. They can still opt back out any time via their own
+        # profile (PUT /dealers/me/profile).
         profile = DealerProfile(user_id=dealer_user.id, application_id=a.id, business_name=a.business_name,
-                                 public_phone=a.phone, public_email=a.email, address=a.address, district=a.district)
+                                 public_phone=a.phone, public_email=a.email, address=a.address, district=a.district,
+                                 directory_opt_in=True, show_public_phone=True, show_public_email=True)
         db.add(profile)
         db.flush()
         db.add(DealerServiceArea(dealer_id=profile.id, district=a.district, mandal=a.mandal))
