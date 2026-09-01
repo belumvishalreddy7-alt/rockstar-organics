@@ -92,11 +92,13 @@ class Settings(BaseSettings):
     EMAIL_FROM_EMAIL: str | None = None
     PUBLIC_APP_URL: str = "http://localhost:5173"
 
-    # OTP-gated signup (see /api/auth/signup + /api/auth/verify-otp).
+    # OTP codes: signup verification (/api/auth/signup + /verify-otp) and
+    # the staff/dealer/distributor login second factor
+    # (/api/auth/login + /login/verify-otp).
     OTP_TTL_MINUTES: int = 10
     OTP_MAX_ATTEMPTS: int = 5
-    # When true, the signup OTP code is also returned in the API response,
-    # so signup can be completed without a working email provider. Same
+    # When true, the OTP code is also returned in the API response, so
+    # signup/login can be completed without a working email provider. Same
     # rule as DEV_EXPOSE_RESET_TOKEN just above - defaults to False.
     DEV_EXPOSE_OTP: bool = False
 
@@ -139,7 +141,7 @@ def _validate_production_settings(s: "Settings") -> None:
     if not s.COOKIE_SECURE:
         errors.append("COOKIE_SECURE must be true in production (cookies must be HTTPS-only).")
     if s.DEV_EXPOSE_OTP:
-        errors.append("DEV_EXPOSE_OTP must be false in production - it discloses signup OTP codes in the API response.")
+        errors.append("DEV_EXPOSE_OTP must be false in production - it discloses signup/login OTP codes in the API response.")
     if s.DEV_EXPOSE_RESET_TOKEN:
         errors.append("DEV_EXPOSE_RESET_TOKEN must be false in production - it discloses password-reset tokens in the API response.")
     if errors:

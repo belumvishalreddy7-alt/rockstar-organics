@@ -4,43 +4,91 @@ import { useAuth } from "../../context/AuthContext";
 import { api, ApiError } from "../../api/client";
 import { PasswordInput } from "../../components/PasswordInput";
 
+function goToRoleHome(navigate: ReturnType<typeof useNavigate>, role: string) {
+  if (role === "farmer") navigate("/farmer");
+  else if (role === "dealer") navigate("/dealer");
+  else if (role === "distributor") navigate("/distributor");
+  else navigate("/staff");
+}
+
 export function Login() {
-  const { login } = useAuth();
+  const { login, verifyLoginOtp } = useAuth();
   const navigate = useNavigate();
+  const [step, setStep] = useState<"credentials" | "otp">("credentials");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [emailSent, setEmailSent] = useState<boolean | null>(null);
+  const [devOtp, setDevOtp] = useState<string | null>(null);
 
   return (
     <div className="container page-section" style={{ maxWidth: 420 }}>
       <h1>Sign in</h1>
       <div className="panel">
         {error && <div className="alert alert-error">{error}</div>}
-        <form
-          onSubmit={async (e) => {
-            e.preventDefault();
-            setPending(true);
-            setError(null);
-            try {
-              const user = await login(email, password);
-              if (user.role === "farmer") navigate("/farmer");
-              else if (user.role === "dealer") navigate("/dealer");
-              else if (user.role === "distributor") navigate("/distributor");
-              else navigate("/staff");
-            } catch (err) {
-              setError(err instanceof ApiError ? err.message : "Unable to sign in.");
-            } finally {
-              setPending(false);
-            }
-          }}
-        >
-          <div className="field"><label htmlFor="email">Email</label>
-            <input id="email" type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
-          <div className="field"><label htmlFor="password">Password</label>
-            <PasswordInput id="password" required autoComplete="current-password" value={password} onChange={setPassword} /></div>
-          <button className="btn btn-primary" type="submit" disabled={pending}>{pending ? "Signing in..." : "Sign in"}</button>
-        </form>
+        {step === "credentials" && (
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setPending(true);
+              setError(null);
+              try {
+                const result = await login(email, password);
+                if ("otp_required" in result) {
+                  setEmailSent(result.email_sent);
+                  setDevOtp(result.dev_otp_code || null);
+                  setStep("otp");
+                } else {
+                  goToRoleHome(navigate, result.role);
+                }
+              } catch (err) {
+                setError(err instanceof ApiError ? err.message : "Unable to sign in.");
+              } finally {
+                setPending(false);
+              }
+            }}
+          >
+            <div className="field"><label htmlFor="email">Email</label>
+              <input id="email" type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
+            <div className="field"><label htmlFor="password">Password</label>
+              <PasswordInput id="password" required autoComplete="current-password" value={password} onChange={setPassword} /></div>
+            <button className="btn btn-primary" type="submit" disabled={pending}>{pending ? "Signing in..." : "Sign in"}</button>
+          </form>
+        )}
+        {step === "otp" && (
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setPending(true);
+              setError(null);
+              try {
+                const user = await verifyLoginOtp(email, code);
+                goToRoleHome(navigate, user.role);
+              } catch (err) {
+                setError(err instanceof ApiError ? err.message : "Incorrect or expired verification code.");
+              } finally {
+                setPending(false);
+              }
+            }}
+          >
+            <p className="small muted">
+              {emailSent
+                ? <>We emailed a 6-digit verification code to <strong>{email}</strong>.</>
+                : "Email delivery is not configured in this environment, so the code below is shown directly (this only happens in development)."}
+            </p>
+            {devOtp && (
+              <div className="alert alert-info">Development mode: your code is <strong>{devOtp}</strong>.</div>
+            )}
+            <div className="field"><label htmlFor="login-otp-code">Verification code</label>
+              <input type="text" id="login-otp-code" required inputMode="numeric" maxLength={6} autoFocus value={code} onChange={(e) => setCode(e.target.value)} /></div>
+            <button className="btn btn-primary" type="submit" disabled={pending}>{pending ? "Verifying..." : "Verify and sign in"}</button>
+            <button type="button" className="btn btn-ghost" style={{ marginLeft: 8 }} onClick={() => { setStep("credentials"); setCode(""); setError(null); }}>
+              Back
+            </button>
+          </form>
+        )}
         <p className="small" style={{ marginTop: 12 }}>
           <Link to="/forgot-password">Forgot your password?</Link> · <Link to="/signup">Create an account</Link>
         </p>

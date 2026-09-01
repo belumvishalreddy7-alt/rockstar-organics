@@ -228,6 +228,75 @@ def test_reset_password_is_rate_limited(client):
     assert r.status_code == 429
 
 
+def test_staff_login_stops_at_otp_before_issuing_a_session(client, super_admin):
+    """The CsrfSyncClient fixture transparently completes this second step
+    for every other test in the suite (see conftest.py) - this test talks
+    to the raw endpoint directly to confirm what it's completing actually
+    exists and actually gates the session."""
+    _, email, password = super_admin
+    import app.main as main_module
+    from starlette.testclient import TestClient as PlainTestClient
+    raw = PlainTestClient(main_module.app)
+
+    r = raw.post("/api/v1/auth/login", json={"email": email, "password": password})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["otp_required"] is True
+    assert body["email"] == email
+    assert "dev_otp_code" in body  # DEV_EXPOSE_OTP=true in tests
+
+    # No session yet - an authenticated call must not succeed.
+    assert raw.get("/api/v1/auth/me").json() is None
+
+    wrong = raw.post("/api/v1/auth/login/verify-otp", json={"email": email, "code": "000000"})
+    assert wrong.status_code == 400
+
+    right = raw.post("/api/v1/auth/login/verify-otp", json={"email": email, "code": body["dev_otp_code"]})
+    assert right.status_code == 200
+    assert right.json()["email"] == email
+    assert raw.get("/api/v1/auth/me").json()["email"] == email
+
+
+def test_dealer_login_requires_otp_too(client, approved_dealer):
+    uid, email, password, _ = approved_dealer
+    import app.main as main_module
+    from starlette.testclient import TestClient as PlainTestClient
+    raw = PlainTestClient(main_module.app)
+    r = raw.post("/api/v1/auth/login", json={"email": email, "password": password})
+    assert r.json()["otp_required"] is True
+
+
+def test_farmer_login_skips_otp(client):
+    client.post("/api/v1/auth/register", json={
+        "full_name": "No Otp Farmer", "email": "nootpfarmer@example.com", "phone": "9876543248", "password": "Passw0rd123",
+    })
+    client.post("/api/v1/auth/logout")
+    import app.main as main_module
+    from starlette.testclient import TestClient as PlainTestClient
+    raw = PlainTestClient(main_module.app)
+    r = raw.post("/api/v1/auth/login", json={"email": "nootpfarmer@example.com", "password": "Passw0rd123"})
+    assert r.status_code == 200
+    assert "otp_required" not in r.json()
+    assert r.json()["email"] == "nootpfarmer@example.com"
+
+
+def test_login_otp_expired_code_is_used_up_by_a_fresh_request(client, super_admin):
+    """Requesting a second login OTP invalidates the first - mirrors the
+    same rule the signup OTP flow already enforces."""
+    _, email, password = super_admin
+    import app.main as main_module
+    from starlette.testclient import TestClient as PlainTestClient
+    raw = PlainTestClient(main_module.app)
+
+    first = raw.post("/api/v1/auth/login", json={"email": email, "password": password}).json()
+    second = raw.post("/api/v1/auth/login", json={"email": email, "password": password}).json()
+
+    stale = raw.post("/api/v1/auth/login/verify-otp", json={"email": email, "code": first["dev_otp_code"]})
+    assert stale.status_code == 400
+    fresh = raw.post("/api/v1/auth/login/verify-otp", json={"email": email, "code": second["dev_otp_code"]})
+    assert fresh.status_code == 200
+
+
 def test_password_max_length_enforced(client):
     # Rejected at the schema layer (422) since Field(max_length=...) catches
     # it before password_strength_errors ever runs - either way, an

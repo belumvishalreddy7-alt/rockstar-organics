@@ -11,6 +11,7 @@ _tmp_db = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
 os.environ["DATABASE_URL"] = f"sqlite:///{_tmp_db.name}"
 os.environ["ENVIRONMENT"] = "test"
 os.environ["DEV_EXPOSE_RESET_TOKEN"] = "true"
+os.environ["DEV_EXPOSE_OTP"] = "true"
 os.environ["UPLOAD_ROOT"] = tempfile.mkdtemp(prefix="rso-uploads-")
 
 import uuid
@@ -52,7 +53,17 @@ class CsrfSyncClient(TestClient):
     frontend does (see src/api/client.ts). Without this, every test that
     logs in and then performs a POST/PUT/DELETE would need to manually
     thread the CSRF token through - this keeps test code focused on
-    behavior rather than plumbing."""
+    behavior rather than plumbing.
+
+    It also transparently completes the login-OTP second factor: staff,
+    dealer, and distributor logins now stop at /auth/login with
+    {"otp_required": true} rather than issuing a session (see
+    OTP_LOGIN_ROLES in routers/auth.py). Since DEV_EXPOSE_OTP is on in
+    tests, the code comes back in the same response - so this immediately
+    follows up with /auth/login/verify-otp and hands back *that* response,
+    letting every existing `client.post("/api/v1/auth/login", ...)` call
+    site across the test suite keep working unchanged, exactly as if OTP
+    didn't exist."""
 
     def request(self, method, url, *args, **kwargs):
         csrf_token = self.cookies.get("rso_csrf")
@@ -60,7 +71,16 @@ class CsrfSyncClient(TestClient):
             headers = kwargs.get("headers") or {}
             headers = {**headers, "x-csrf-token": csrf_token}
             kwargs["headers"] = headers
-        return super().request(method, url, *args, **kwargs)
+        response = super().request(method, url, *args, **kwargs)
+        if method.upper() == "POST" and str(url).rstrip("/").endswith("/auth/login") and response.status_code == 200:
+            try:
+                data = response.json()
+            except ValueError:
+                data = None
+            if isinstance(data, dict) and data.get("otp_required"):
+                response = super().request("POST", "/api/v1/auth/login/verify-otp",
+                                            json={"email": data["email"], "code": data["dev_otp_code"]})
+        return response
 
 
 @pytest.fixture()

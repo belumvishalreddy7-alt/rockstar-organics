@@ -13,7 +13,7 @@ from app.core.database import get_db
 from app.core.deps import create_session_value, get_current_user, require_user
 from app.core.email import otp_email, password_reset_email, send_email, welcome_email
 from app.core.notify import notify
-from app.core.permissions import ROLE_DEALER, ROLE_DISTRIBUTOR, ROLE_FARMER, ROLE_SUPER_ADMIN
+from app.core.permissions import ROLE_DEALER, ROLE_DISTRIBUTOR, ROLE_FARMER, ROLE_SUPER_ADMIN, STAFF_ROLES
 from app.core.rate_limit import rate_limiter
 from app.core.security import (
     generate_token,
@@ -44,6 +44,13 @@ GENERIC_LOGIN_ERROR = "Incorrect email or password."
 # super_admin's own logins are not, since those are the owner's own team,
 # not the outside parties this notification is for.
 NOTIFY_OWNER_ON_LOGIN_ROLES = {ROLE_FARMER, ROLE_DEALER, ROLE_DISTRIBUTOR}
+
+# Roles that must confirm a second factor (an emailed code) before a
+# password-correct login actually issues a session. Farmers are excluded -
+# a farmer account already goes through an OTP at signup and carries lower
+# stakes than a login that can manage the business (staff) or a commercial
+# partner account (dealer/distributor).
+OTP_LOGIN_ROLES = STAFF_ROLES | {ROLE_DEALER, ROLE_DISTRIBUTOR}
 
 
 def _rotate_session_version(db: Session, user: User) -> None:
@@ -235,7 +242,24 @@ def verify_otp(payload: VerifyOtpRequest, response: Response, db: Session = Depe
     return user
 
 
-@router.post("/login", response_model=UserOut)
+def _finish_login(db: Session, request: Request, response: Response, user: User) -> UserOut:
+    """The actual "you are now signed in" step: audit log, owner
+    notification, session-version rotation, and issuing the session/CSRF
+    cookies. Called directly from login() for roles that skip OTP, and from
+    verify_login_otp() once the second factor has been confirmed - either
+    way, this is the single place a session actually gets issued."""
+    record_audit(db, actor_id=user.id, action="user.login", entity_type="user", entity_id=user.id,
+                 summary=f"User signed in: {user.email}",
+                 ip_address=request.client.host if request.client else None,
+                 user_agent=request.headers.get("user-agent"))
+    db.commit()
+    _notify_owner_of_login(db, user)
+    _rotate_session_version(db, user)
+    _issue_session(response, user)
+    return UserOut.model_validate(user)
+
+
+@router.post("/login")
 def login(payload: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
     limiter_key = f"login:{request.client.host if request.client else 'unknown'}:{payload.email.lower()}"
     if not rate_limiter.check(limiter_key, settings.LOGIN_RATE_LIMIT_ATTEMPTS, settings.LOGIN_RATE_LIMIT_WINDOW_SECONDS):
@@ -248,15 +272,68 @@ def login(payload: LoginRequest, request: Request, response: Response, db: Sessi
     if user.status != "active":
         raise HTTPException(status_code=401, detail=GENERIC_LOGIN_ERROR)
 
-    record_audit(db, actor_id=user.id, action="user.login", entity_type="user", entity_id=user.id,
-                 summary=f"User signed in: {user.email}",
-                 ip_address=request.client.host if request.client else None,
-                 user_agent=request.headers.get("user-agent"))
+    if user.role in OTP_LOGIN_ROLES:
+        # Password confirmed, but no session yet - a code is emailed and
+        # must be confirmed at /login/verify-otp before _finish_login runs.
+        # Replaces any prior unconsumed login OTP for this email, same as
+        # signup, so only the latest requested code is valid.
+        db.query(OtpCode).filter(OtpCode.email == user.email, OtpCode.purpose == "login", OtpCode.consumed_at.is_(None)).delete()
+        code = _generate_otp_code()
+        db.add(OtpCode(
+            email=user.email,
+            code_hash=hash_token(code, settings.SECRET_KEY),
+            purpose="login",
+            expires_at=dt.datetime.utcnow() + dt.timedelta(minutes=settings.OTP_TTL_MINUTES),
+        ))
+        record_audit(db, actor_id=user.id, action="user.login_otp_requested", entity_type="user", entity_id=user.id,
+                     summary=f"Login verification code requested for {user.email}")
+        db.commit()
+
+        html, text = otp_email(code)
+        email_result = send_email(to=user.email, subject="Your Rockstar Organics sign-in code", html=html, text=text)
+        otp_response = {
+            "otp_required": True,
+            "email": user.email,
+            "message": "Enter the verification code we emailed you to finish signing in.",
+            "email_sent": email_result.sent,
+        }
+        # Same DEV_EXPOSE_OTP gate as signup - see its docstring in config.py.
+        if settings.DEV_EXPOSE_OTP:
+            otp_response["dev_otp_code"] = code
+        return otp_response
+
+    return _finish_login(db, request, response, user)
+
+
+@router.post("/login/verify-otp")
+def verify_login_otp(payload: VerifyOtpRequest, request: Request, response: Response, db: Session = Depends(get_db)):
+    limiter_key = f"login-otp:{request.client.host if request.client else 'unknown'}:{payload.email.lower()}"
+    if not rate_limiter.check(limiter_key, settings.LOGIN_RATE_LIMIT_ATTEMPTS, settings.LOGIN_RATE_LIMIT_WINDOW_SECONDS):
+        raise HTTPException(status_code=429, detail="Too many attempts. Please try again later.")
+
+    otp = (
+        db.query(OtpCode)
+        .filter(OtpCode.email == payload.email.lower(), OtpCode.purpose == "login", OtpCode.consumed_at.is_(None))
+        .order_by(OtpCode.created_at.desc())
+        .first()
+    )
+    if not otp or otp.expires_at < dt.datetime.utcnow():
+        raise HTTPException(status_code=400, detail="This verification code is invalid or has expired. Please sign in again.")
+    if otp.attempts >= settings.OTP_MAX_ATTEMPTS:
+        raise HTTPException(status_code=400, detail="Too many incorrect attempts. Please sign in again to get a new code.")
+
+    if not hmac.compare_digest(hash_token(payload.code, settings.SECRET_KEY), otp.code_hash):
+        otp.attempts += 1
+        db.commit()
+        raise HTTPException(status_code=400, detail="Incorrect verification code.")
+
+    user = db.query(User).filter(User.email == otp.email).first()
+    if not user or user.status != "active":
+        raise HTTPException(status_code=400, detail="This verification code is invalid or has expired. Please sign in again.")
+
+    otp.consumed_at = dt.datetime.utcnow()
     db.commit()
-    _notify_owner_of_login(db, user)
-    _rotate_session_version(db, user)
-    _issue_session(response, user)
-    return user
+    return _finish_login(db, request, response, user)
 
 
 @router.post("/logout")

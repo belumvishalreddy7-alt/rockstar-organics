@@ -646,23 +646,27 @@ class MediaRecord(Base):
 # ---------------------------------------------------------------------------
 
 class OtpCode(Base):
-    """A short-lived, hashed one-time code for the /auth/signup ->
-    /auth/verify-otp flow. Only the hash is stored (same pattern as
-    PasswordResetToken) so a database read alone never discloses a usable
-    code."""
+    """A short-lived, hashed one-time code, shared by two flows:
+    /auth/signup -> /auth/verify-otp (purpose="signup") and the
+    /auth/login -> /auth/login/verify-otp second factor for staff, dealer,
+    and distributor accounts (purpose="login"). Only the hash is stored
+    (same pattern as PasswordResetToken) so a database read alone never
+    discloses a usable code."""
     __tablename__ = "otp_codes"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
     email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     code_hash: Mapped[str] = mapped_column(String(128), nullable=False)
-    purpose: Mapped[str] = mapped_column(String(30), default="signup")  # signup | login_2fa (future)
+    purpose: Mapped[str] = mapped_column(String(30), default="signup")  # signup | login
     # The pending account payload (full_name, phone, role, hashed password)
     # is held here until the code is verified, so no User row exists until
-    # the email address has actually been proven reachable.
-    pending_full_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    # the email address has actually been proven reachable. Only populated
+    # for purpose="signup" - a purpose="login" row is for an account that
+    # already exists, so these stay null.
+    pending_full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     pending_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    pending_password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    pending_role: Mapped[str] = mapped_column(String(32), nullable=False)
+    pending_password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    pending_role: Mapped[str | None] = mapped_column(String(32), nullable=True)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     expires_at: Mapped[dt.datetime] = mapped_column(DateTime, nullable=False)
     consumed_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)

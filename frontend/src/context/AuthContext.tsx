@@ -10,11 +10,26 @@ export interface CurrentUser {
   must_change_password: boolean;
 }
 
+export interface OtpRequired {
+  otp_required: true;
+  email: string;
+  message: string;
+  email_sent: boolean;
+  dev_otp_code?: string;
+}
+
+export type LoginResult = CurrentUser | OtpRequired;
+
+function isOtpRequired(result: LoginResult): result is OtpRequired {
+  return "otp_required" in result;
+}
+
 interface AuthContextValue {
   user: CurrentUser | null;
   loading: boolean;
   refresh: () => Promise<void>;
-  login: (email: string, password: string) => Promise<CurrentUser>;
+  login: (email: string, password: string) => Promise<LoginResult>;
+  verifyLoginOtp: (email: string, code: string) => Promise<CurrentUser>;
   logout: () => Promise<void>;
 }
 
@@ -40,7 +55,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (email: string, password: string) => {
-    const u = await api.post<CurrentUser>("/auth/login", { email, password });
+    const result = await api.post<LoginResult>("/auth/login", { email, password });
+    // Staff, dealer, and distributor accounts stop here with an emailed
+    // code to confirm (see OTP_LOGIN_ROLES in the backend) - no session is
+    // issued, and therefore no user state to set, until verifyLoginOtp
+    // completes. Farmers skip this and get a session immediately.
+    if (!isOtpRequired(result)) setUser(result);
+    return result;
+  };
+
+  const verifyLoginOtp = async (email: string, code: string) => {
+    const u = await api.post<CurrentUser>("/auth/login/verify-otp", { email, code });
     setUser(u);
     return u;
   };
@@ -57,7 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  return <AuthContext.Provider value={{ user, loading, refresh, login, logout }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ user, loading, refresh, login, verifyLoginOtp, logout }}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
