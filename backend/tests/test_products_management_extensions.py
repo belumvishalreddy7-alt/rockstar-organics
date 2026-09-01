@@ -60,6 +60,7 @@ def test_pack_size_rate_is_optional_and_public_when_set(client, super_admin):
         "sku": "SKU-EXT-RATE", "name": "Extension Test Product", "slug": "extension-test-sku-ext-rate",
         "category_id": cat.json()["id"], "precautions": "Keep away from children.", "full_description": "desc",
     })
+    client.post(f"/api/v1/media/products/{pid}/images?alt_text=Front", files={"file": ("f.jpg", b"\xff\xd8\xff" + b"x" * 20, "image/jpeg")})
     publish = client.post(f"/api/v1/products/{pid}/transition/published", json={})
     assert publish.status_code == 200, publish.text
 
@@ -87,6 +88,7 @@ def test_claim_is_hidden_publicly_until_verified(client, super_admin):
         "sku": "SKU-EXT-CLAIM", "name": "Extension Test Product", "slug": "extension-test-sku-ext-claim",
         "category_id": cat.json()["id"], "precautions": "Keep away from children.", "full_description": "desc",
     })
+    client.post(f"/api/v1/media/products/{pid}/images?alt_text=Front", files={"file": ("f.jpg", b"\xff\xd8\xff" + b"x" * 20, "image/jpeg")})
     publish = client.post(f"/api/v1/products/{pid}/transition/published", json={})
     assert publish.status_code == 200, publish.text
 

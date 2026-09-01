@@ -110,6 +110,7 @@ def test_review_comment_length_is_capped(client, super_admin):
                                               "category_id": cat.json()["id"], "precautions": "x", "full_description": "x"})
     client.post(f"/api/v1/products/{pid}/transition/in_review", json={})
     client.post(f"/api/v1/products/{pid}/transition/approved", json={})
+    client.post(f"/api/v1/media/products/{pid}/images?alt_text=Front", files={"file": ("f.jpg", b"\xff\xd8\xff" + b"x" * 20, "image/jpeg")})
     client.post(f"/api/v1/products/{pid}/transition/published", json={})
     client.post("/api/v1/auth/logout")
 

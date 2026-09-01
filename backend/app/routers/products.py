@@ -285,6 +285,8 @@ def transition_product(product_id: str, new_status: str, payload: ProductStatusC
             missing.append("full description")
         if not p.precautions:
             missing.append("precautions")
+        if not p.images:
+            missing.append("at least one product image")
         if missing:
             raise HTTPException(status_code=400, detail=f"Cannot publish: missing {', '.join(missing)}.")
         p.published_at = dt.datetime.utcnow()
