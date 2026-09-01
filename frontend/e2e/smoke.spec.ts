@@ -135,10 +135,19 @@ test.describe("admin verification workflows", () => {
   const ADMIN_PASSWORD = "AdminDemo123!";
 
   async function loginAsAdmin(page: import("@playwright/test").Page) {
+    // Staff logins now stop for an emailed 2FA code (see OTP_LOGIN_ROLES in
+    // routers/auth.py) - DEV_EXPOSE_OTP is on in CI, so the code is shown
+    // directly on the page instead of needing a real inbox, same pattern as
+    // the signup OTP step used elsewhere in this file.
     await page.goto("/login");
     await page.getByLabel(/^email/i).fill(ADMIN_EMAIL);
     await page.getByLabel(/^password/i).fill(ADMIN_PASSWORD);
     await page.getByRole("button", { name: /sign in/i }).click();
+    const devCode = page.getByText(/your code is/i);
+    await expect(devCode).toBeVisible({ timeout: 10_000 });
+    const code = (await devCode.textContent())?.match(/(\d{6})/)?.[1];
+    await page.getByLabel(/verification code/i).fill(code!);
+    await page.getByRole("button", { name: /verify and sign in/i }).click();
     await expect(page).toHaveURL(/\/staff/, { timeout: 10_000 });
   }
 
@@ -147,7 +156,11 @@ test.describe("admin verification workflows", () => {
     // elsewhere in this suite - drive it directly via the API (same
     // approach the backend's own pytest suite uses) so this test can
     // focus on the review lifecycle itself.
-    const admin = await request.post(`${baseURL}/api/v1/auth/login`, { data: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD } });
+    const adminLogin = await request.post(`${baseURL}/api/v1/auth/login`, { data: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD } });
+    expect(adminLogin.ok()).toBeTruthy();
+    const otpBody = await adminLogin.json();
+    expect(otpBody.otp_required).toBeTruthy();
+    const admin = await request.post(`${baseURL}/api/v1/auth/login/verify-otp`, { data: { email: ADMIN_EMAIL, code: otpBody.dev_otp_code } });
     expect(admin.ok()).toBeTruthy();
     const csrf = admin.headers()["x-csrf-token"];
     const suffix = Date.now();

@@ -50,7 +50,7 @@ export function ChangePassword() {
             <PasswordInput id="current_password" required autoComplete="current-password" value={currentPassword} onChange={setCurrentPassword} /></div>
           <div className="field"><label htmlFor="new_password">New password</label>
             <PasswordInput id="new_password" required autoComplete="new-password" value={newPassword} onChange={setNewPassword} />
-            <p className="hint">At least 10 characters, with uppercase, lowercase, and a digit.</p></div>
+            <p className="hint">At least 10 characters, with a letter and a digit.</p></div>
           <button className="btn btn-primary" type="submit" disabled={pending}>{pending ? "Updating..." : "Change password"}</button>
         </form>
       </div>

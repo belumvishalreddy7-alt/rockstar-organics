@@ -106,7 +106,7 @@ function FarmerSignupForm() {
             <input type="text" id="phone" required value={details.phone} onChange={(e) => setDetails({ ...details, phone: e.target.value })} /></div>
           <div className="field"><label htmlFor="password">Password</label>
             <PasswordInput id="password" required autoComplete="new-password" value={details.password} onChange={(v) => setDetails({ ...details, password: v })} />
-            <p className="hint">At least 10 characters, with uppercase, lowercase, and a digit.</p></div>
+            <p className="hint">At least 10 characters, with a letter and a digit.</p></div>
           <button className="btn btn-primary" type="submit" disabled={requestOtp.isPending}>
             {requestOtp.isPending ? "Sending code..." : "Send verification code"}
           </button>

@@ -266,18 +266,21 @@ def test_dealer_login_requires_otp_too(client, approved_dealer):
     assert r.json()["otp_required"] is True
 
 
-def test_farmer_login_skips_otp(client):
+def test_farmer_login_also_requires_otp(client):
     client.post("/api/v1/auth/register", json={
-        "full_name": "No Otp Farmer", "email": "nootpfarmer@example.com", "phone": "9876543248", "password": "Passw0rd123",
+        "full_name": "Otp Farmer", "email": "otpfarmer@example.com", "phone": "9876543248", "password": "Passw0rd123",
     })
     client.post("/api/v1/auth/logout")
     import app.main as main_module
     from starlette.testclient import TestClient as PlainTestClient
     raw = PlainTestClient(main_module.app)
-    r = raw.post("/api/v1/auth/login", json={"email": "nootpfarmer@example.com", "password": "Passw0rd123"})
+    r = raw.post("/api/v1/auth/login", json={"email": "otpfarmer@example.com", "password": "Passw0rd123"})
     assert r.status_code == 200
-    assert "otp_required" not in r.json()
-    assert r.json()["email"] == "nootpfarmer@example.com"
+    body = r.json()
+    assert body["otp_required"] is True
+    verified = raw.post("/api/v1/auth/login/verify-otp", json={"email": "otpfarmer@example.com", "code": body["dev_otp_code"]})
+    assert verified.status_code == 200
+    assert verified.json()["email"] == "otpfarmer@example.com"
 
 
 def test_login_otp_expired_code_is_used_up_by_a_fresh_request(client, super_admin):
@@ -295,6 +298,37 @@ def test_login_otp_expired_code_is_used_up_by_a_fresh_request(client, super_admi
     assert stale.status_code == 400
     fresh = raw.post("/api/v1/auth/login/verify-otp", json={"email": email, "code": second["dev_otp_code"]})
     assert fresh.status_code == 200
+
+
+def test_password_accepts_a_single_letter_case(client):
+    """password_strength_errors no longer requires both an uppercase AND a
+    lowercase letter separately - a password that's all one case is fine
+    as long as it has a letter and a digit. All-uppercase and all-lowercase
+    passwords must both register successfully."""
+    r = client.post("/api/v1/auth/register", json={
+        "full_name": "Upper Case", "email": "uppercasepw@example.com", "phone": "9876543249", "password": "ALLUPPERCASE1",
+    })
+    assert r.status_code == 200, r.text
+    client.post("/api/v1/auth/logout")
+
+    r = client.post("/api/v1/auth/register", json={
+        "full_name": "Lower Case", "email": "lowercasepw@example.com", "phone": "9876543250", "password": "alllowercase1",
+    })
+    assert r.status_code == 200, r.text
+
+
+def test_password_still_requires_a_letter_and_a_digit(client):
+    r = client.post("/api/v1/auth/register", json={
+        "full_name": "No Letter", "email": "noletterpw@example.com", "phone": "9876543251", "password": "1234567890",
+    })
+    assert r.status_code == 400
+    assert "letter" in r.json()["detail"].lower()
+
+    r = client.post("/api/v1/auth/register", json={
+        "full_name": "No Digit", "email": "nodigitpw@example.com", "phone": "9876543252", "password": "nodigitshere",
+    })
+    assert r.status_code == 400
+    assert "digit" in r.json()["detail"].lower()
 
 
 def test_password_max_length_enforced(client):

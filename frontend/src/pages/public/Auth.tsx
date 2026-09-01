@@ -133,7 +133,7 @@ export function Register() {
             <input type="text" id="phone" required value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
           <div className="field"><label htmlFor="password">Password</label>
             <PasswordInput id="password" required autoComplete="new-password" value={form.password} onChange={(v) => setForm({ ...form, password: v })} />
-            <p className="hint">At least 10 characters, with uppercase, lowercase, and a digit.</p></div>
+            <p className="hint">At least 10 characters, with a letter and a digit.</p></div>
           <button className="btn btn-primary" type="submit" disabled={pending}>{pending ? "Creating account..." : "Create account"}</button>
         </form>
       </div>

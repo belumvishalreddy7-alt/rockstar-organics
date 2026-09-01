@@ -46,11 +46,9 @@ GENERIC_LOGIN_ERROR = "Incorrect email or password."
 NOTIFY_OWNER_ON_LOGIN_ROLES = {ROLE_FARMER, ROLE_DEALER, ROLE_DISTRIBUTOR}
 
 # Roles that must confirm a second factor (an emailed code) before a
-# password-correct login actually issues a session. Farmers are excluded -
-# a farmer account already goes through an OTP at signup and carries lower
-# stakes than a login that can manage the business (staff) or a commercial
-# partner account (dealer/distributor).
-OTP_LOGIN_ROLES = STAFF_ROLES | {ROLE_DEALER, ROLE_DISTRIBUTOR}
+# password-correct login actually issues a session - every account type,
+# farmers included.
+OTP_LOGIN_ROLES = STAFF_ROLES | {ROLE_DEALER, ROLE_DISTRIBUTOR, ROLE_FARMER}
 
 
 def _rotate_session_version(db: Session, user: User) -> None:

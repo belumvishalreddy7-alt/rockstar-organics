@@ -24,6 +24,10 @@ def test_second_login_invalidates_the_first_session(client):
     second = PlainTestClient(main_module.app)
     r = second.post("/api/v1/auth/login", json={"email": "sessionfarmer2@example.com", "password": "Passw0rd123"})
     assert r.status_code == 200
+    otp_body = r.json()
+    assert otp_body["otp_required"] is True  # farmer logins require the emailed code too now
+    r = second.post("/api/v1/auth/login/verify-otp", json={"email": "sessionfarmer2@example.com", "code": otp_body["dev_otp_code"]})
+    assert r.status_code == 200
 
     # The original (first) session must now be rejected.
     first = PlainTestClient(main_module.app)

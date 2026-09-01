@@ -56,15 +56,17 @@ def verify_password_or_dummy(raw: str, hashed: str | None) -> bool:
 
 
 def password_strength_errors(raw: str) -> list[str]:
+    # Letter case is deliberately not enforced separately (no more "must
+    # include an uppercase letter" / "must include a lowercase letter") -
+    # an all-uppercase or all-lowercase password satisfies this just fine,
+    # only a letter of either case plus a digit is required.
     errors = []
     if len(raw) < PASSWORD_MIN_LENGTH:
         errors.append(f"Password must be at least {PASSWORD_MIN_LENGTH} characters.")
     if len(raw) > PASSWORD_MAX_LENGTH:
         errors.append(f"Password must be at most {PASSWORD_MAX_LENGTH} characters.")
-    if not any(c.isupper() for c in raw):
-        errors.append("Password must include an uppercase letter.")
-    if not any(c.islower() for c in raw):
-        errors.append("Password must include a lowercase letter.")
+    if not any(c.isalpha() for c in raw):
+        errors.append("Password must include a letter.")
     if not any(c.isdigit() for c in raw):
         errors.append("Password must include a digit.")
     return errors
