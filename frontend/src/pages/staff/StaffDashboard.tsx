@@ -24,7 +24,6 @@ export function StaffDashboardLayout() {
     { to: "/staff/dealer-applications", label: "Dealer applications" },
     { to: "/staff/distributor-applications", label: "Distributor applications" },
     { to: "/staff/documents", label: "Certificates & documents" },
-    { to: "/staff/gallery", label: "Agriculture gallery" },
     { to: "/staff/reviews", label: "Product reviews" },
     { to: "/staff/announcements", label: "Announcements" },
     { to: "/staff/accounts", label: "Accounts" },

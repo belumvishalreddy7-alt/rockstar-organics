@@ -231,27 +231,6 @@ test.describe("admin verification workflows", () => {
     await expect(page.getByText(`E2E Certificate ${suffix}`)).toBeVisible({ timeout: 10_000 });
   });
 
-  test("staff can approve and publish an agriculture photo", async ({ page }) => {
-    await loginAsAdmin(page);
-    await page.goto("/staff/gallery");
-
-    const suffix = Date.now();
-    await page.getByLabel(/^title$/i).fill(`E2E Field Photo ${suffix}`);
-    await page.getByLabel(/alt text/i).fill("A field photographed for an automated test.");
-    await page.getByLabel(/usage rights verified/i).check();
-    await page.setInputFiles("#photo-file", { name: "field.jpg", mimeType: "image/jpeg", buffer: Buffer.from([0xff, 0xd8, 0xff, 0xe0]) });
-    await page.getByRole("button", { name: /^upload$/i }).click();
-    await expect(page.getByText(`E2E Field Photo ${suffix}`)).toBeVisible({ timeout: 10_000 });
-
-    const row = page.getByRole("row").filter({ hasText: `E2E Field Photo ${suffix}` });
-    await row.getByRole("button", { name: /^approve$/i }).click();
-    await expect(row.getByRole("button", { name: /^publish$/i })).toBeVisible({ timeout: 10_000 });
-    await row.getByRole("button", { name: /^publish$/i }).click();
-
-    await page.goto("/gallery");
-    await expect(page.getByText(`E2E Field Photo ${suffix}`)).toBeVisible({ timeout: 10_000 });
-  });
-
   test("a farmer is blocked from the staff dashboard", async ({ page }) => {
     const suffix = Date.now();
     await page.goto("/register");

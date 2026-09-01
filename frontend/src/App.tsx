@@ -32,7 +32,6 @@ import { ProductManagement } from "./pages/staff/ProductManagement";
 import { DealerApplications } from "./pages/staff/DealerApplications";
 import { DistributorApplications } from "./pages/staff/DistributorApplications";
 import { CompanyDocuments } from "./pages/staff/CompanyDocuments";
-import { AgriculturePhotos } from "./pages/staff/AgriculturePhotos";
 import { ReviewModeration } from "./pages/staff/ReviewModeration";
 import { AnnouncementManagement } from "./pages/staff/AnnouncementManagement";
 import { AccountManagement } from "./pages/staff/AccountManagement";
@@ -148,7 +147,6 @@ export default function App() {
             <Route path="dealer-applications" element={<DealerApplications />} />
             <Route path="distributor-applications" element={<DistributorApplications />} />
             <Route path="documents" element={<CompanyDocuments />} />
-            <Route path="gallery" element={<AgriculturePhotos />} />
             <Route path="reviews" element={<ReviewModeration />} />
             <Route path="announcements" element={<AnnouncementManagement />} />
             <Route path="accounts" element={<AccountManagement />} />
