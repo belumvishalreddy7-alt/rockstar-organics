@@ -25,13 +25,8 @@ export function StaffDashboardLayout() {
     { to: "/staff/distributor-applications", label: "Distributor applications" },
     { to: "/staff/documents", label: "Certificates & documents" },
     { to: "/staff/gallery", label: "Agriculture gallery" },
-    { to: "/staff/cases", label: "Farmer cases" },
     { to: "/staff/reviews", label: "Product reviews" },
     { to: "/staff/announcements", label: "Announcements" },
-    { to: "/staff/knowledge", label: "Knowledge articles" },
-    { to: "/staff/tasks", label: "Follow-up tasks" },
-    { to: "/staff/enquiries", label: "Enquiries" },
-    { to: "/staff/my-visits", label: "My assigned visits" },
     { to: "/staff/accounts", label: "Accounts" },
     { to: "/staff/corporate-content", label: "Corporate content" },
     { to: "/staff/staff-applications", label: "Staff applications" },
@@ -112,7 +107,7 @@ function RoleQueue() {
   return (
     <div className="panel">
       <h2>Your work queue</h2>
-      <p className="small muted">Use the navigation to review products, dealer applications, farmer cases, and pending reviews assigned to your role.</p>
+      <p className="small muted">Use the navigation to review products, dealer applications, and pending reviews assigned to your role.</p>
     </div>
   );
 }

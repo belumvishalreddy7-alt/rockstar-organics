@@ -33,14 +33,9 @@ import { DealerApplications } from "./pages/staff/DealerApplications";
 import { DistributorApplications } from "./pages/staff/DistributorApplications";
 import { CompanyDocuments } from "./pages/staff/CompanyDocuments";
 import { AgriculturePhotos } from "./pages/staff/AgriculturePhotos";
-import { CaseQueue } from "./pages/staff/CaseQueue";
 import { ReviewModeration } from "./pages/staff/ReviewModeration";
 import { AnnouncementManagement } from "./pages/staff/AnnouncementManagement";
-import { KnowledgeManagement } from "./pages/staff/KnowledgeManagement";
-import { TaskBoard } from "./pages/staff/TaskBoard";
-import { EnquiryQueue } from "./pages/staff/EnquiryQueue";
 import { AccountManagement } from "./pages/staff/AccountManagement";
-import { MyVisits } from "./pages/staff/MyVisits";
 import { CorporateContentManagement } from "./pages/staff/CorporateContentManagement";
 import { StaffApplications } from "./pages/staff/StaffApplications";
 
@@ -154,14 +149,9 @@ export default function App() {
             <Route path="distributor-applications" element={<DistributorApplications />} />
             <Route path="documents" element={<CompanyDocuments />} />
             <Route path="gallery" element={<AgriculturePhotos />} />
-            <Route path="cases" element={<CaseQueue />} />
             <Route path="reviews" element={<ReviewModeration />} />
             <Route path="announcements" element={<AnnouncementManagement />} />
-            <Route path="knowledge" element={<KnowledgeManagement />} />
-            <Route path="tasks" element={<TaskBoard />} />
-            <Route path="enquiries" element={<EnquiryQueue />} />
             <Route path="accounts" element={<AccountManagement />} />
-            <Route path="my-visits" element={<MyVisits />} />
             <Route path="corporate-content" element={<CorporateContentManagement />} />
             <Route path="staff-applications" element={<StaffApplications />} />
           </Route>
