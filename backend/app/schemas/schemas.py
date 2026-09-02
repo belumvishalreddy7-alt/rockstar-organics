@@ -135,6 +135,21 @@ class DealerApplicationDecision(BaseModel):
     reason: str | None = Field(default=None, max_length=2000)
 
 
+PRODUCT_TRANSLATION_LANGUAGES = {"te", "hi", "kn", "ta"}
+
+
+class ProductTranslation(BaseModel):
+    """One language's version of the customer-facing product text. Entered
+    by the owner/staff directly - never machine-translated, since
+    `precautions` is real pesticide/fertilizer safety wording and an
+    automated mistranslation there is a genuine hazard, not a copy nit."""
+    name: str | None = Field(default=None, max_length=255)
+    short_description: str | None = Field(default=None, max_length=500)
+    full_description: str | None = Field(default=None, max_length=10000)
+    benefits: str | None = Field(default=None, max_length=5000)
+    precautions: str | None = Field(default=None, max_length=5000)
+
+
 class ProductCreate(BaseModel):
     sku: str = Field(min_length=1, max_length=60)
     name: str = Field(min_length=1, max_length=255)
@@ -161,12 +176,20 @@ class ProductCreate(BaseModel):
     grade: str | None = Field(default=None, max_length=100)
     physical_form: str | None = Field(default=None, max_length=100)
     technical_specifications: str | None = Field(default=None, max_length=5000)
+    translations: dict[str, ProductTranslation] | None = None
 
     @field_validator("slug")
     @classmethod
     def valid_slug(cls, v):
         if not SLUG_RE.match(v):
             raise ValueError("Slug must be lowercase letters, numbers, and hyphens only.")
+        return v
+
+    @field_validator("translations")
+    @classmethod
+    def valid_translation_languages(cls, v):
+        if v and (bad := set(v) - PRODUCT_TRANSLATION_LANGUAGES):
+            raise ValueError(f"Unsupported translation language(s): {', '.join(sorted(bad))}.")
         return v
 
 

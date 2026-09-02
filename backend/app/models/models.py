@@ -265,6 +265,14 @@ class Product(Base):
     featured: Mapped[bool] = mapped_column(Boolean, default=False)
     seo_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
     seo_description: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Owner-entered translations, one JSON blob keyed by language code (e.g.
+    # {"te": {"name": "...", "short_description": "...", "full_description":
+    # "...", "benefits": "...", "precautions": "..."}, "hi": {...}}). Never
+    # machine-translated - precautions are pesticide/fertilizer safety
+    # instructions, and an automated mistranslation there is a real hazard,
+    # not just a copy-editing nit. A language/field missing here falls back
+    # to the English column of the same name on the public product page.
+    translations: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="draft", index=True)
     # draft|pending_verification|in_review|revision_required|approved|
     # published|unpublished|archived|rejected - pending_verification and

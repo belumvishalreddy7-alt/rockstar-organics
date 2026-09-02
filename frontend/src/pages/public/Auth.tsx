@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import { useLanguage } from "../../context/LanguageContext";
 import { api, ApiError } from "../../api/client";
 import { PasswordInput } from "../../components/PasswordInput";
 
@@ -13,6 +14,7 @@ function goToRoleHome(navigate: ReturnType<typeof useNavigate>, role: string) {
 
 export function Login() {
   const { login, verifyLoginOtp, sessionExpired } = useAuth();
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const [step, setStep] = useState<"credentials" | "otp">("credentials");
   const [email, setEmail] = useState("");
@@ -25,12 +27,10 @@ export function Login() {
 
   return (
     <div className="container page-section" style={{ maxWidth: 420 }}>
-      <h1>Sign in</h1>
+      <h1>{t("auth.signInTitle")}</h1>
       <div className="panel">
         {sessionExpired && (
-          <div className="alert alert-info">
-            Your session ended - this can happen after a while, or after signing in from another device. Sign in again to continue.
-          </div>
+          <div className="alert alert-info">{t("auth.sessionEnded")}</div>
         )}
         {error && <div className="alert alert-error">{error}</div>}
         {step === "credentials" && (
@@ -55,11 +55,11 @@ export function Login() {
               }
             }}
           >
-            <div className="field"><label htmlFor="email">Email</label>
+            <div className="field"><label htmlFor="email">{t("auth.email")}</label>
               <input id="email" type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
-            <div className="field"><label htmlFor="password">Password</label>
+            <div className="field"><label htmlFor="password">{t("auth.password")}</label>
               <PasswordInput id="password" required autoComplete="current-password" value={password} onChange={setPassword} /></div>
-            <button className="btn btn-primary" type="submit" disabled={pending}>{pending ? "Signing in..." : "Sign in"}</button>
+            <button className="btn btn-primary" type="submit" disabled={pending}>{pending ? t("auth.signingIn") : t("auth.signIn")}</button>
           </form>
         )}
         {step === "otp" && (
@@ -86,16 +86,16 @@ export function Login() {
             {devOtp && (
               <div className="alert alert-info">Development mode: your code is <strong>{devOtp}</strong>.</div>
             )}
-            <div className="field"><label htmlFor="login-otp-code">Verification code</label>
+            <div className="field"><label htmlFor="login-otp-code">{t("auth.verificationCode")}</label>
               <input type="text" id="login-otp-code" required inputMode="numeric" maxLength={6} autoFocus value={code} onChange={(e) => setCode(e.target.value)} /></div>
-            <button className="btn btn-primary" type="submit" disabled={pending}>{pending ? "Verifying..." : "Verify and sign in"}</button>
+            <button className="btn btn-primary" type="submit" disabled={pending}>{pending ? t("product.submitting") : t("auth.verifyAndSignIn")}</button>
             <button type="button" className="btn btn-ghost" style={{ marginLeft: 8 }} onClick={() => { setStep("credentials"); setCode(""); setError(null); }}>
-              Back
+              {t("auth.back")}
             </button>
           </form>
         )}
         <p className="small" style={{ marginTop: 12 }}>
-          <Link to="/forgot-password">Forgot your password?</Link> · <Link to="/signup">Create an account</Link>
+          <Link to="/forgot-password">{t("auth.forgotPassword")}</Link> · <Link to="/signup">{t("auth.createAccount")}</Link>
         </p>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import datetime as dt
+import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
@@ -104,6 +105,26 @@ def _rating_summaries(db: Session, product_ids: list[str]) -> dict[str, dict]:
     return summaries
 
 
+def _translations_dict(p: Product) -> dict:
+    if not p.translations:
+        return {}
+    try:
+        return json.loads(p.translations)
+    except (TypeError, ValueError):
+        return {}
+
+
+def _pop_translations_json(payload_dict: dict) -> str | None:
+    """Pulls `translations` out of a ProductCreate/ProductUpdate dump and
+    JSON-encodes it for the Text column - the schema validates it as a
+    structured dict, but Product.translations stores the serialized form,
+    same pattern as every other free-form JSON blob in this codebase."""
+    translations = payload_dict.pop("translations", None)
+    if not translations:
+        return None
+    return json.dumps({lang: {k: v for k, v in fields.items() if v is not None} for lang, fields in translations.items()})
+
+
 def _serialize(p: Product, rating_summary: dict) -> dict:
     return {
         "id": p.id, "sku": p.sku, "name": p.name, "slug": p.slug, "category_id": p.category_id,
@@ -122,6 +143,7 @@ def _serialize(p: Product, rating_summary: dict) -> dict:
         "status": p.status, "featured": p.featured,
         "updated_at": p.updated_at.isoformat() if p.updated_at else None,
         "images": [{"id": i.id, "file_path": i.file_path, "alt_text": i.alt_text} for i in p.images],
+        "translations": _translations_dict(p),
         **rating_summary,
     }
 
@@ -191,7 +213,9 @@ def create_product(payload: ProductCreate, user: User = Depends(require_roles(*P
         raise HTTPException(status_code=400, detail="A product with this SKU already exists.")
     if db.query(Product).filter(Product.slug == payload.slug).first():
         raise HTTPException(status_code=400, detail="A product with this slug already exists.")
-    p = Product(**payload.model_dump(), created_by_id=user.id, updated_by_id=user.id, status="draft")
+    data = payload.model_dump()
+    translations_json = _pop_translations_json(data)
+    p = Product(**data, translations=translations_json, created_by_id=user.id, updated_by_id=user.id, status="draft")
     db.add(p)
     db.flush()
     record_audit(db, actor_id=user.id, action="product.create", entity_type="product", entity_id=p.id, summary=f"Created draft product {p.name}")
@@ -206,8 +230,11 @@ def update_product(product_id: str, payload: ProductUpdate, user: User = Depends
     p = db.get(Product, product_id)
     if not p:
         raise HTTPException(status_code=404, detail="Product not found.")
-    for field, value in payload.model_dump().items():
+    data = payload.model_dump()
+    translations_json = _pop_translations_json(data)
+    for field, value in data.items():
         setattr(p, field, value)
+    p.translations = translations_json
     p.updated_by_id = user.id
     record_audit(db, actor_id=user.id, action="product.update", entity_type="product", entity_id=p.id, summary=f"Updated product {p.name}")
     db.commit()

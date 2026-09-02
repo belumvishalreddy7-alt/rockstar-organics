@@ -2,10 +2,13 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "../../api/client";
 import { EmptyState } from "../../components/EmptyState";
+import { useLanguage } from "../../context/LanguageContext";
+import { localizedProductField, type ProductTranslations } from "../../i18n/localized";
 
-interface Product { id: string; name: string; slug: string; short_description: string | null; }
+interface Product { id: string; name: string; slug: string; short_description: string | null; translations: ProductTranslations; }
 
 export function Home() {
+  const { language, t } = useLanguage();
   const products = useQuery({
     queryKey: ["home-products"],
     queryFn: () => api.get<{ items: Product[] }>("/products/public?page_size=3"),
@@ -39,59 +42,43 @@ export function Home() {
         </div>
         <div className="hero-fade" aria-hidden="true"></div>
         <div className="container">
-          <h1>Agriculture. Trust. Transparency.</h1>
-          <p>
-            <strong>
-              Trust density beats clever copy in agri &mdash; farmers buy from people they believe, not brands they
-              like.
-            </strong>
-          </p>
-          <p>
-            Rockstar Organics is an agricultural enterprise rooted in Telangana, India, serving the farming
-            community across Ranga Reddy district and beyond.
-          </p>
+          <h1>{t("home.heroTitle")}</h1>
+          <p><strong>{t("home.heroLead")}</strong></p>
+          <p>{t("home.heroBody")}</p>
           <div className="hero-actions">
-            <Link className="btn btn-primary" to="/products">Explore Products</Link>
-            <Link className="btn btn-outline-light" to="/dealer-programme">Become a Dealer</Link>
-            <Link className="btn btn-outline-light" to="/distributors">Become a Distributor</Link>
-            <Link className="btn btn-outline-light" to="/login">Login</Link>
+            <Link className="btn btn-primary" to="/products">{t("home.exploreProducts")}</Link>
+            <Link className="btn btn-outline-light" to="/dealer-programme">{t("home.becomeDealer")}</Link>
+            <Link className="btn btn-outline-light" to="/distributors">{t("home.becomeDistributor")}</Link>
+            <Link className="btn btn-outline-light" to="/login">{t("home.login")}</Link>
           </div>
         </div>
       </section>
 
       <section className="page-section">
         <div className="container">
-          <h2>Built around the farming community</h2>
-          <p>
-            Rockstar Organics connects farmers, dealers, distributors, field officers and administrators through a
-            unified digital platform. The platform is designed to make agricultural products and verified
-            information easier to discover while providing structured workflows for enquiries, stock availability,
-            support cases, field visits and business relationships.
-          </p>
+          <h2>{t("home.builtAroundTitle")}</h2>
+          <p>{t("home.builtAroundBody")}</p>
         </div>
       </section>
 
       <section className="page-section">
         <div className="container">
           <div className="section-heading">
-            <h2>Explore Products</h2>
-            <Link to="/products">View full catalogue</Link>
+            <h2>{t("home.exploreProductsTitle")}</h2>
+            <Link to="/products">{t("home.viewFullCatalogue")}</Link>
           </div>
-          <p className="small muted">
-            Every public product record follows a controlled workflow before publication: Draft &rarr; Review
-            &rarr; Approval &rarr; Publication. Only approved and published product information appears publicly.
-          </p>
+          <p className="small muted">{t("home.workflowNote")}</p>
           {products.isLoading && <div className="loading-state">Loading products...</div>}
           {products.data && products.data.items.length === 0 && (
-            <EmptyState title="No products have been published yet.">
-              <p className="small">Products appear here once staff review and publish them.</p>
+            <EmptyState title={t("home.noProducts")}>
+              <p className="small">{t("home.noProductsBody")}</p>
             </EmptyState>
           )}
           <div className="grid cols-3">
             {products.data?.items.map((p) => (
               <div className="panel" key={p.id}>
-                <h3><Link to={`/products/${p.slug}`}>{p.name}</Link></h3>
-                <p className="small muted">{p.short_description || "Information pending verification."}</p>
+                <h3><Link to={`/products/${p.slug}`}>{localizedProductField(p, language, "name") || p.name}</Link></h3>
+                <p className="small muted">{localizedProductField(p, language, "short_description") || t("home.pendingVerification")}</p>
               </div>
             ))}
           </div>
@@ -100,12 +87,10 @@ export function Home() {
 
       <section className="page-section tight" style={{ background: "var(--color-surface-alt)" }}>
         <div className="container">
-          <h2>Information should earn its place</h2>
+          <h2>{t("home.infoEarnsTitle")}</h2>
           <p className="small">
-            Agricultural product information can influence farming decisions. Product records can contain
-            composition, formulation, application, dosage, precautions, packaging, label information, technical
-            documents, supporting documents and source information. Unverified information remains
-            <em> Information pending verification.</em>
+            {t("home.infoEarnsBody")}
+            <em> {t("home.pendingVerification")}</em>
           </p>
         </div>
       </section>

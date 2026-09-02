@@ -160,6 +160,44 @@ def test_product_image_upload_and_removal(client, super_admin):
     assert product_after["images"] == []
 
 
+def test_product_translations_saved_and_returned(client, super_admin):
+    """Owner-entered translations round-trip through create and update, and
+    an unsupported language code is rejected outright - these are never
+    machine-translated, so a typo'd language key should fail loudly rather
+    than silently storing under the wrong key."""
+    _, email, password = super_admin
+    _login(client, email, password)
+
+    r = client.post("/api/v1/products", json={
+        "sku": "SKU-I18N", "name": "Translated Product", "slug": "translated-product",
+        "precautions": "Keep away from children.", "full_description": "English description.",
+        "translations": {"te": {"name": "తెలుగు పేరు", "precautions": "పిల్లలకు దూరంగా ఉంచండి."}},
+    })
+    assert r.status_code == 200, r.text
+    pid = r.json()["id"]
+    assert r.json()["translations"] == {"te": {"name": "తెలుగు పేరు", "precautions": "పిల్లలకు దూరంగా ఉంచండి."}}
+
+    bad_lang = client.put(f"/api/v1/products/{pid}", json={
+        "sku": "SKU-I18N", "name": "Translated Product", "slug": "translated-product",
+        "precautions": "Keep away from children.", "full_description": "English description.",
+        "translations": {"fr": {"name": "Nom français"}},
+    })
+    assert bad_lang.status_code == 422
+
+    updated = client.put(f"/api/v1/products/{pid}", json={
+        "sku": "SKU-I18N", "name": "Translated Product", "slug": "translated-product",
+        "precautions": "Keep away from children.", "full_description": "English description.",
+        "translations": {"hi": {"name": "हिंदी नाम"}},
+    })
+    assert updated.status_code == 200, updated.text
+    # PUT replaces the whole row, same as every other field - the earlier
+    # Telugu entry is gone because this update didn't resend it.
+    assert updated.json()["translations"] == {"hi": {"name": "हिंदी नाम"}}
+
+    fetched = client.get("/api/v1/products").json()["items"][0]
+    assert fetched["translations"] == {"hi": {"name": "हिंदी नाम"}}
+
+
 def test_sku_and_slug_uniqueness(client, super_admin):
     _, email, password = super_admin
     _login(client, email, password)

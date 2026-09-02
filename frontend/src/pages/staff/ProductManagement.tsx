@@ -5,6 +5,16 @@ import { useAuth } from "../../context/AuthContext";
 import { EmptyState } from "../../components/EmptyState";
 import { StatusBadge } from "../../components/StatusBadge";
 
+type TranslationLang = "te" | "hi" | "kn" | "ta";
+const TRANSLATION_LANGS: { code: TranslationLang; label: string }[] = [
+  { code: "te", label: "Telugu" },
+  { code: "hi", label: "Hindi" },
+  { code: "kn", label: "Kannada" },
+  { code: "ta", label: "Tamil" },
+];
+interface TranslationFieldsOut { name?: string; short_description?: string; full_description?: string; benefits?: string; precautions?: string; }
+type TranslationFields = { name: string; short_description: string; full_description: string; benefits: string; precautions: string };
+
 interface ProductRow {
   id: string; sku: string; name: string; status: string; slug: string;
   category_id: string | null; short_description: string | null; full_description: string | null;
@@ -14,6 +24,7 @@ interface ProductRow {
   active_ingredients: string | null; nutrient_content: string | null; concentration: string | null;
   formulation: string | null; grade: string | null; physical_form: string | null; technical_specifications: string | null;
   images: { id: string; file_path: string; alt_text: string | null }[];
+  translations: Partial<Record<TranslationLang, TranslationFieldsOut>>;
 }
 
 interface Category { id: string; name: string; slug: string; }
@@ -36,7 +47,11 @@ type ProductFieldValues = {
   dosage_value: string; dosage_unit: string; manufacturing_date: string; expiry_date: string;
   active_ingredients: string; nutrient_content: string; concentration: string; formulation: string;
   grade: string; physical_form: string; technical_specifications: string;
+  translations: Record<TranslationLang, TranslationFields>;
 };
+
+const EMPTY_TRANSLATION: TranslationFields = { name: "", short_description: "", full_description: "", benefits: "", precautions: "" };
+const EMPTY_TRANSLATIONS: Record<TranslationLang, TranslationFields> = { te: { ...EMPTY_TRANSLATION }, hi: { ...EMPTY_TRANSLATION }, kn: { ...EMPTY_TRANSLATION }, ta: { ...EMPTY_TRANSLATION } };
 
 function rowToFieldValues(p: ProductRow): ProductFieldValues {
   return {
@@ -48,6 +63,12 @@ function rowToFieldValues(p: ProductRow): ProductFieldValues {
     active_ingredients: p.active_ingredients || "", nutrient_content: p.nutrient_content || "",
     concentration: p.concentration || "", formulation: p.formulation || "", grade: p.grade || "",
     physical_form: p.physical_form || "", technical_specifications: p.technical_specifications || "",
+    translations: {
+      te: { ...EMPTY_TRANSLATION, ...p.translations.te },
+      hi: { ...EMPTY_TRANSLATION, ...p.translations.hi },
+      kn: { ...EMPTY_TRANSLATION, ...p.translations.kn },
+      ta: { ...EMPTY_TRANSLATION, ...p.translations.ta },
+    },
   };
 }
 
@@ -60,7 +81,10 @@ function ProductFields({ values, onChange, categories, onCategoryCreated }: {
   categories: Category[] | undefined; onCategoryCreated: (id: string) => void;
 }) {
   const [showComposition, setShowComposition] = useState(false);
+  const [showTranslations, setShowTranslations] = useState(false);
   const set = <K extends keyof ProductFieldValues>(key: K, val: ProductFieldValues[K]) => onChange({ ...values, [key]: val });
+  const setTranslation = (lang: TranslationLang, field: keyof TranslationFields, val: string) =>
+    onChange({ ...values, translations: { ...values.translations, [lang]: { ...values.translations[lang], [field]: val } } });
 
   return (
     <>
@@ -121,6 +145,36 @@ function ProductFields({ values, onChange, categories, onCategoryCreated }: {
           <div className="field"><label>Technical specifications</label><textarea value={values.technical_specifications} onChange={(e) => set("technical_specifications", e.target.value)} /></div>
         </div>
       )}
+
+      <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowTranslations((s) => !s)}>
+        {showTranslations ? "Hide translations" : "Add translations (Telugu, Hindi, Kannada, Tamil)"}
+      </button>
+      {showTranslations && (
+        <div className="stack" style={{ marginTop: 10 }}>
+          <p className="muted small">
+            Type each language's real wording yourself - this is never auto-translated. A language left blank simply
+            shows the English version on the public page. Precautions especially are safety instructions, so accuracy
+            here matters more than completeness.
+          </p>
+          {TRANSLATION_LANGS.map(({ code, label }) => (
+            <fieldset key={code}>
+              <legend>{label}</legend>
+              <div className="grid cols-2">
+                <div className="field"><label>Name</label>
+                  <input type="text" value={values.translations[code].name} onChange={(e) => setTranslation(code, "name", e.target.value)} /></div>
+                <div className="field"><label>Short description</label>
+                  <input type="text" value={values.translations[code].short_description} onChange={(e) => setTranslation(code, "short_description", e.target.value)} /></div>
+              </div>
+              <div className="field"><label>Full description</label>
+                <textarea value={values.translations[code].full_description} onChange={(e) => setTranslation(code, "full_description", e.target.value)} /></div>
+              <div className="field"><label>Uses / benefits</label>
+                <textarea value={values.translations[code].benefits} onChange={(e) => setTranslation(code, "benefits", e.target.value)} /></div>
+              <div className="field"><label>Precautions</label>
+                <textarea value={values.translations[code].precautions} onChange={(e) => setTranslation(code, "precautions", e.target.value)} /></div>
+            </fieldset>
+          ))}
+        </div>
+      )}
       <p className="muted">Leave any field blank if the information isn't verified yet - it will show as "Information pending verification" rather than being guessed.</p>
     </>
   );
@@ -148,18 +202,33 @@ const EMPTY_FORM: ProductFieldValues = {
   benefits: "", recommended_crops: "", application_method: "", dosage_value: "", dosage_unit: "",
   manufacturing_date: "", expiry_date: "",
   active_ingredients: "", nutrient_content: "", concentration: "", formulation: "", grade: "", physical_form: "", technical_specifications: "",
+  translations: EMPTY_TRANSLATIONS,
 };
 
 /** category_id/manufacturing_date/expiry_date are "" in the form state
  * (plain controlled inputs) but the backend needs null, not an empty
  * string, for an optional FK/date field - an empty string fails Pydantic's
- * date parsing outright, the same lesson as the pack-size price field. */
+ * date parsing outright, the same lesson as the pack-size price field.
+ * translations gets the same treatment per-field, plus a language with
+ * every field left blank is dropped entirely rather than sent as an empty
+ * object. */
 function fieldsToPayload(v: ProductFieldValues) {
+  const translations: Record<string, TranslationFieldsOut> = {};
+  for (const { code } of TRANSLATION_LANGS) {
+    const t = v.translations[code];
+    const cleaned: TranslationFieldsOut = {
+      name: t.name || undefined, short_description: t.short_description || undefined,
+      full_description: t.full_description || undefined, benefits: t.benefits || undefined,
+      precautions: t.precautions || undefined,
+    };
+    if (Object.values(cleaned).some((val) => val !== undefined)) translations[code] = cleaned;
+  }
   return {
     ...v,
     category_id: v.category_id || null,
     manufacturing_date: v.manufacturing_date || null,
     expiry_date: v.expiry_date || null,
+    translations,
   };
 }
 
