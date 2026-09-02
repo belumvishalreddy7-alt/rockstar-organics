@@ -48,6 +48,10 @@ def test_product_lifecycle_and_visibility(client, super_admin):
 
     r = client.get("/api/v1/products/public/neem-based-spray")
     assert r.status_code == 200
+    assert r.json()["category_name"] == "Bio Pesticides"
+
+    listed = client.get("/api/v1/products/public")
+    assert listed.json()["items"][0]["category_name"] == "Bio Pesticides"
 
     r = client.post(f"/api/v1/products/{pid}/transition/unpublished", json={})
     assert r.status_code == 200

@@ -10,6 +10,7 @@ from app.core.deps import require_roles, require_user
 from app.core.permissions import CONTENT_VERIFIERS, PRODUCT_CONTRIBUTORS, PRODUCT_MANAGERS, SETTINGS_MANAGERS
 from app.models.models import (
     Product,
+    ProductCategory,
     ProductImage,
     ProductReview,
     User,
@@ -145,8 +146,16 @@ def public_catalogue(
     total = query.count()
     items = query.order_by(Product.published_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
     summaries = _rating_summaries(db, [p.id for p in items])
+    category_names = _category_names(db)
     return {"total": total, "page": page, "page_size": page_size,
-            "items": [_serialize(p, summaries[p.id]) for p in items]}
+            "items": [{**_serialize(p, summaries[p.id]), "category_name": category_names.get(p.category_id)} for p in items]}
+
+
+def _category_names(db: Session) -> dict[str, str]:
+    """One query for the whole category table (a handful of rows) rather
+    than one lookup per product - cheap either way, but this keeps the
+    catalogue list at a fixed query count regardless of page size."""
+    return {c.id: c.name for c in db.query(ProductCategory).all()}
 
 
 @router.get("/public/{slug}")
@@ -155,6 +164,8 @@ def public_product_detail(slug: str, db: Session = Depends(get_db)):
     if not p:
         raise HTTPException(status_code=404, detail="Product not found.")
     out = _serialize(p, _rating_summaries(db, [p.id])[p.id])
+    category = db.get(ProductCategory, p.category_id) if p.category_id else None
+    out["category_name"] = category.name if category else None
     reviews = db.query(ProductReview).filter(ProductReview.product_id == p.id, ProductReview.status == "approved").order_by(ProductReview.created_at.desc()).all()
     out["reviews"] = [{"id": r.id, "reviewer_name": r.reviewer_name, "rating": r.rating, "comment": r.comment, "created_at": r.created_at.isoformat()} for r in reviews]
     return out
