@@ -40,6 +40,22 @@ settings = get_settings()
 
 GENERIC_LOGIN_ERROR = "Incorrect email or password."
 
+# Shown only once a password or OTP code has already been proven correct -
+# at that point the requester has already confirmed the account exists, so
+# naming the real reason (vs. the generic wrong-password/wrong-code message)
+# doesn't create a new account-enumeration path, and it stops a suspended or
+# disabled account from looking like a broken OTP system.
+_ACCOUNT_STATUS_MESSAGES = {
+    "pending": "Your account is pending approval. Please wait for an administrator to activate it.",
+    "suspended": "Your account has been suspended. Contact an administrator for help.",
+    "rejected": "Your application was not approved. Contact an administrator for help.",
+    "disabled": "Your account has been disabled. Contact an administrator for help.",
+}
+
+
+def _account_status_error(status: str) -> str:
+    return _ACCOUNT_STATUS_MESSAGES.get(status, "Your account cannot sign in right now. Contact an administrator for help.")
+
 # Roles whose sign-ins the owner (super_admin) is notified about - staff and
 # super_admin's own logins are not, since those are the owner's own team,
 # not the outside parties this notification is for.
@@ -268,7 +284,7 @@ def login(payload: LoginRequest, request: Request, response: Response, db: Sessi
     if not user or not password_ok:
         raise HTTPException(status_code=401, detail=GENERIC_LOGIN_ERROR)
     if user.status != "active":
-        raise HTTPException(status_code=401, detail=GENERIC_LOGIN_ERROR)
+        raise HTTPException(status_code=401, detail=_account_status_error(user.status))
 
     if user.role in OTP_LOGIN_ROLES:
         # Password confirmed, but no session yet - a code is emailed and
@@ -326,8 +342,13 @@ def verify_login_otp(payload: VerifyOtpRequest, request: Request, response: Resp
         raise HTTPException(status_code=400, detail="Incorrect verification code.")
 
     user = db.query(User).filter(User.email == otp.email).first()
-    if not user or user.status != "active":
+    if not user:
         raise HTTPException(status_code=400, detail="This verification code is invalid or has expired. Please sign in again.")
+    if user.status != "active":
+        # The code itself was correct - the account's status changed after
+        # the code was requested (e.g. suspended mid-flow). Say so plainly
+        # instead of blaming the code, which would be misleading.
+        raise HTTPException(status_code=400, detail=_account_status_error(user.status))
 
     otp.consumed_at = dt.datetime.utcnow()
     db.commit()

@@ -36,6 +36,39 @@ def test_suspended_account_cannot_login(client, super_admin):
 
     r = client.post("/api/v1/auth/login", json={"email": "suspended@example.com", "password": "Passw0rd123"})
     assert r.status_code == 401
+    # Password was correct, so this should name the real reason rather than
+    # reusing the generic wrong-password message - otherwise a suspended
+    # account looks indistinguishable from a broken login/OTP system.
+    assert r.json()["detail"] == "Your account has been suspended. Contact an administrator for help."
+
+
+def test_account_suspended_between_otp_request_and_verify_says_so(client):
+    import app.main as main_module
+    from app.core.database import SessionLocal
+    from app.models.models import User
+    from starlette.testclient import TestClient as PlainTestClient
+
+    r = client.post("/api/v1/auth/register", json={
+        "full_name": "Mid Flow", "email": "midflow@example.com", "phone": "9876543299", "password": "Passw0rd123",
+    })
+    assert r.status_code == 200
+    client.post("/api/v1/auth/logout")
+
+    raw = PlainTestClient(main_module.app)
+    r = raw.post("/api/v1/auth/login", json={"email": "midflow@example.com", "password": "Passw0rd123"})
+    assert r.status_code == 200
+    otp_body = r.json()
+    assert otp_body["otp_required"] is True
+
+    db = SessionLocal()
+    user = db.query(User).filter(User.email == "midflow@example.com").first()
+    user.status = "disabled"
+    db.commit()
+    db.close()
+
+    r = raw.post("/api/v1/auth/login/verify-otp", json={"email": "midflow@example.com", "code": otp_body["dev_otp_code"]})
+    assert r.status_code == 400
+    assert r.json()["detail"] == "Your account has been disabled. Contact an administrator for help."
 
 
 def test_role_cannot_be_escalated_by_client(client):
