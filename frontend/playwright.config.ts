@@ -12,6 +12,12 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
+  // CI's several parallel workers share one backend process and one login
+  // rate limit (5 attempts/5min) on the single seeded admin account used by
+  // multiple tests - workers racing each other past that limit was the
+  // actual cause of intermittent CI failures, not a real bug. Serial
+  // execution in CI removes the race; local runs keep full parallelism.
+  workers: process.env.CI ? 1 : undefined,
   reporter: process.env.CI ? [["html", { open: "never" }], ["list"]] : "list",
   use: {
     baseURL: process.env.E2E_BASE_URL || "http://localhost:5173",

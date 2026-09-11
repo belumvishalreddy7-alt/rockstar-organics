@@ -135,8 +135,15 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
+      # Overrides frontend/.env.production's VITE_API_BASE_URL (the real
+      # Render API, for the actual Vercel deploy) so this test build talks
+      # to the local backend started above through vite preview's own /api
+      # proxy instead - otherwise every request hits the live production
+      # API from localhost and gets rejected by CORS.
       - name: Build frontend
         run: npm run build
+        env:
+          VITE_API_BASE_URL: ""
 
       - name: Serve frontend build
         run: npx vite preview --port 5173 &

@@ -178,6 +178,14 @@ test.describe("admin verification workflows", () => {
       data: { sku: `SKU-E2E-${suffix}`, name: "E2E Reviewed Product", slug: `e2e-reviewed-${suffix}`, category_id: categoryId, precautions: "x", full_description: "x" },
     });
     expect(updated.ok()).toBeTruthy();
+    // Publishing requires at least one product image (see the "Won't
+    // publish yet" gate in ProductManagement.tsx / products.py) - without
+    // this the "published" transition below 400s.
+    const image = await request.post(`${baseURL}/api/v1/media/products/${productId}/images?alt_text=E2E%20test%20image`, {
+      headers: { "x-csrf-token": csrf },
+      multipart: { file: { name: "front.jpg", mimeType: "image/jpeg", buffer: Buffer.from([0xff, 0xd8, 0xff, 0x00, 0x00, 0x00]) } },
+    });
+    expect(image.ok()).toBeTruthy();
     for (const status of ["in_review", "approved", "published"]) {
       const transition = await request.post(`${baseURL}/api/v1/products/${productId}/transition/${status}`, { headers: { "x-csrf-token": csrf }, data: {} });
       expect(transition.ok()).toBeTruthy();
@@ -203,9 +211,9 @@ test.describe("admin verification workflows", () => {
     await expect(page).toHaveURL(/\/farmer/, { timeout: 10_000 });
 
     await page.goto(`/products/e2e-reviewed-${suffix}`);
-    await expect(page.getByText(/no farmer reviews are available yet/i)).toBeVisible();
+    await expect(page.getByText(/no farmer reviews yet/i)).toBeVisible();
     await page.getByLabel(/rating/i).selectOption("5");
-    await page.getByRole("button", { name: /submit rating/i }).click();
+    await page.getByRole("button", { name: /submit a rating/i }).click();
     await expect(page.getByText(/thank you/i)).toBeVisible({ timeout: 10_000 });
 
     // Staff logs in, sees it pending, approves it.
@@ -218,7 +226,7 @@ test.describe("admin verification workflows", () => {
 
     // Public product page now shows it.
     await page.goto(`/products/e2e-reviewed-${suffix}`);
-    await expect(page.getByText(/5\.0 average from 1 verified farmer review/i)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/5\.0.*1 verified farmer review/i)).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText(reviewerName)).toBeVisible();
   });
 
