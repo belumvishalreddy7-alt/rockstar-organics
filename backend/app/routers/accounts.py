@@ -69,6 +69,17 @@ def change_dealer_status(user_id: str, new_status: str, user: User = Depends(req
     profile = db.query(DealerProfile).filter(DealerProfile.user_id == target.id).first()
     if profile:
         profile.suspended = new_status != "active"
+    elif new_status == "active":
+        # A profile can be missing here if it was previously removed via
+        # Delete (which only removes the profile, not the login account -
+        # see delete_dealer below). Without this, reactivating just brings
+        # the login back while leaving the account invisible in the
+        # directory and 404ing on its own dashboard. Activating is the
+        # same trust decision as approving a fresh application, so this
+        # mirrors that flow's defaults exactly - the dealer can fill in
+        # real details themselves via PUT /dealers/me/profile afterward.
+        db.add(DealerProfile(user_id=target.id, business_name=target.full_name, district="Not set",
+                              directory_opt_in=True, show_public_phone=True, show_public_email=True))
     record_audit(db, actor_id=user.id, action="dealer.status_change", entity_type="user", entity_id=target.id,
                  summary=f"Dealer account {target.email} -> {new_status}")
     db.commit()
@@ -120,6 +131,13 @@ def change_distributor_status(user_id: str, new_status: str, user: User = Depend
     profile = db.query(DistributorProfile).filter(DistributorProfile.user_id == target.id).first()
     if profile:
         profile.suspended = new_status != "active"
+    elif new_status == "active":
+        # Same reasoning as change_dealer_status above - a missing profile
+        # here (e.g. after Delete, which removes the profile but not the
+        # login) would otherwise leave the account invisible in the
+        # directory and 404ing on its own dashboard even after reactivation.
+        db.add(DistributorProfile(user_id=target.id, business_name=target.full_name, territory="Not set",
+                                   directory_opt_in=True, show_public_phone=True, show_public_email=True))
     record_audit(db, actor_id=user.id, action="distributor.status_change", entity_type="user", entity_id=target.id,
                  summary=f"Distributor account {target.email} -> {new_status}")
     db.commit()

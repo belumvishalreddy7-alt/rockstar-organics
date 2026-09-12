@@ -168,6 +168,72 @@ def test_delete_distributor_removes_profile_disables_login_and_handles_stock(cli
     assert client.post("/api/v1/auth/login", json={"email": email, "password": creds["temporary_password"]}).status_code == 401
 
 
+def test_reactivating_dealer_after_delete_restores_a_working_profile(client, sales_manager, super_admin):
+    """Delete removes the dealer's profile but only disables (not deletes)
+    the login - reactivating that login via status/active must not leave
+    the account stuck with no profile at all (invisible in the directory,
+    404 on their own dashboard). See accounts.py's change_dealer_status."""
+    email = _unique_email("reactivate-dealer")
+    r = client.post("/api/v1/dealers/apply", json={
+        "contact_person": "Reactivate Dealer", "business_name": "Reactivate Dealer Co",
+        "email": email, "phone": "9876543219", "district": "Reactivate district", "consent_given": True,
+    })
+    app_id = r.json()["id"]
+
+    _, sm_email, sm_password = sales_manager
+    client.post("/api/v1/auth/login", json={"email": sm_email, "password": sm_password})
+    approve = client.post(f"/api/v1/dealers/applications/{app_id}/status/approved", json={})
+    assert approve.status_code == 200, approve.text
+    client.post("/api/v1/auth/logout")
+
+    _, admin_email, admin_password = super_admin
+    client.post("/api/v1/auth/login", json={"email": admin_email, "password": admin_password})
+    dealer_user_id = next(row["id"] for row in client.get("/api/v1/accounts/dealers").json() if row["email"] == email)
+
+    deleted = client.delete(f"/api/v1/accounts/dealers/{dealer_user_id}")
+    assert deleted.status_code == 200, deleted.text
+
+    reactivated = client.post(f"/api/v1/accounts/dealers/{dealer_user_id}/status/active")
+    assert reactivated.status_code == 200, reactivated.text
+    # The original district was lost along with the rest of the deleted
+    # profile - a placeholder rebuilt profile can't know it - so this looks
+    # it up unfiltered rather than by the (now-gone) original district.
+    after = client.get("/api/v1/dealers/directory").json()
+    rebuilt = next((d for d in after if d["business_name"] == "Reactivate Dealer"), None)
+    assert rebuilt is not None, after  # rebuilt from full_name (the application's contact_person), not the lost original
+    assert rebuilt["district"] == "Not set"
+
+
+def test_reactivating_distributor_after_delete_restores_a_working_profile(client, sales_manager, super_admin):
+    """Same coverage as the dealer equivalent above, for change_distributor_status."""
+    email = _unique_email("reactivate-distributor")
+    r = client.post("/api/v1/distributors/apply", json={
+        "contact_person": "Reactivate Distributor", "business_name": "Reactivate Distribution Co",
+        "email": email, "phone": "9876543220", "territory": "Reactivate territory", "consent_given": True,
+    })
+    app_id = r.json()["id"]
+
+    _, sm_email, sm_password = sales_manager
+    client.post("/api/v1/auth/login", json={"email": sm_email, "password": sm_password})
+    approve = client.post(f"/api/v1/distributors/applications/{app_id}/status/approved", json={})
+    assert approve.status_code == 200, approve.text
+    client.post("/api/v1/auth/logout")
+
+    _, admin_email, admin_password = super_admin
+    client.post("/api/v1/auth/login", json={"email": admin_email, "password": admin_password})
+    distributor_user_id = next(row["id"] for row in client.get("/api/v1/accounts/distributors").json() if row["email"] == email)
+
+    deleted = client.delete(f"/api/v1/accounts/distributors/{distributor_user_id}")
+    assert deleted.status_code == 200, deleted.text
+
+    reactivated = client.post(f"/api/v1/accounts/distributors/{distributor_user_id}/status/active")
+    assert reactivated.status_code == 200, reactivated.text
+    after = client.get("/api/v1/distributors/directory").json()
+    rebuilt = next((d for d in after if d["business_name"] == "Reactivate Distributor"), None)
+    assert rebuilt is not None, after
+    assert rebuilt["territory"] == "Not set"
+
+
 def test_distributor_application_rejects_invalid_status(client, sales_manager):
     uid, admin_email, admin_password = sales_manager
     client.post("/api/v1/auth/login", json={"email": admin_email, "password": admin_password})
