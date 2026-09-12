@@ -15,6 +15,6 @@ pytest-asyncio==1.4.0
 email-validator==2.2.0
 
 # Production hardening (all optional at runtime - see docs/PRODUCTION_CHECKLIST.md):
-redis==5.0.8                       # shared rate limiting across workers/instances (REDIS_URL)
+redis==8.1.0                       # shared rate limiting across workers/instances (REDIS_URL)
 sentry-sdk[fastapi]==2.14.0        # error tracking (SENTRY_DSN)
 prometheus-fastapi-instrumentator==8.1.0  # /metrics endpoint for Prometheus scraping
