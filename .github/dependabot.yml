@@ -1,0 +1,32 @@
+# Automatic dependency vulnerability scanning. Without this, an outdated
+# package with a known CVE (like the 63 found across pillow/starlette/
+# python-multipart/pytest on 2026-09-12) just sits there silently until
+# someone happens to run pip-audit/npm audit by hand - this catches that
+# automatically and opens a PR instead.
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "backend"
+
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "frontend"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "ci"
